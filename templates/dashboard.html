@@ -1,27 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SecureBox - File Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-slate-950 text-slate-50">
   <div class="min-h-screen">
     <!-- Header -->
     <div class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
       <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center">
+          <div
+            class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center">
             <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3v-6"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3v-6"></path>
             </svg>
           </div>
           <h1 class="text-xl font-semibold">SecureBox</h1>
         </div>
-        <button class="text-slate-400 hover:text-slate-50 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+        <a href="{{ url_for('logout') }}"
+          class="text-slate-400 hover:text-slate-50 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
           Logout
-        </button>
+        </a>
       </div>
     </div>
 
@@ -31,12 +36,16 @@
       <div class="mb-8">
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">Upload Files</h2>
         <div class="border border-slate-800 bg-slate-900/50 p-8 rounded-lg relative overflow-hidden group">
-          <div class="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          
+          <div
+            class="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          </div>
+
           <label class="relative flex flex-col items-center justify-center cursor-pointer gap-4">
-            <div class="w-12 h-12 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors flex items-center justify-center">
+            <div
+              class="w-12 h-12 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors flex items-center justify-center">
               <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
               </svg>
             </div>
             <div class="text-center">
@@ -59,7 +68,9 @@
           <!-- Empty state -->
           <div id="emptyState" class="border border-slate-800 bg-slate-900/30 p-12 rounded-lg text-center">
             <svg class="w-12 h-12 text-slate-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+              </path>
             </svg>
             <p class="text-slate-400 text-sm">No files yet. Upload something to get started!</p>
           </div>
@@ -156,4 +167,5 @@
     renderFiles();
   </script>
 </body>
+
 </html>

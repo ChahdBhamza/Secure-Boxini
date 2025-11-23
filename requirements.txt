@@ -1,3 +1,6 @@
 Flask
 pymongo
 python-dotenv
+authlib
+requests
+Flask-Mail
