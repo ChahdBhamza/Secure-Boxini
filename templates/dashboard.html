@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureBox - File Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-50">
+  <div class="min-h-screen">
+    <!-- Header -->
+    <div class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
+      <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center">
+            <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3v-6"></path>
+            </svg>
+          </div>
+          <h1 class="text-xl font-semibold">SecureBox</h1>
+        </div>
+        <button class="text-slate-400 hover:text-slate-50 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+          Logout
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-6xl mx-auto px-6 py-8">
+      <!-- Upload Section -->
+      <div class="mb-8">
+        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">Upload Files</h2>
+        <div class="border border-slate-800 bg-slate-900/50 p-8 rounded-lg relative overflow-hidden group">
+          <div class="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          
+          <label class="relative flex flex-col items-center justify-center cursor-pointer gap-4">
+            <div class="w-12 h-12 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors flex items-center justify-center">
+              <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-medium text-slate-50">Drag and drop your files here</p>
+              <p class="text-xs text-slate-500 mt-1">or click to browse from your computer</p>
+            </div>
+            <input type="file" id="fileInput" class="hidden" accept="*">
+          </label>
+        </div>
+      </div>
+
+      <!-- Files Section -->
+      <div>
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Your Files</h2>
+          <span id="fileCount" class="text-xs text-slate-500 bg-slate-900 px-3 py-1 rounded-full">0 files</span>
+        </div>
+
+        <div id="filesList" class="space-y-3">
+          <!-- Empty state -->
+          <div id="emptyState" class="border border-slate-800 bg-slate-900/30 p-12 rounded-lg text-center">
+            <svg class="w-12 h-12 text-slate-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-slate-400 text-sm">No files yet. Upload something to get started!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let files = [
+      { id: "1", filename: "Project_Proposal.pdf", size: "2.4 MB", uploadTime: "2 days ago" },
+      { id: "2", filename: "Q4_Financial_Report.xlsx", size: "1.8 MB", uploadTime: "1 week ago" },
+      { id: "3", filename: "Design_System.figma", size: "5.2 MB", uploadTime: "3 days ago" },
+    ];
+
+    function renderFiles() {
+      const filesList = document.getElementById("filesList");
+      const emptyState = document.getElementById("emptyState");
+      const fileCount = document.getElementById("fileCount");
+
+      if (files.length === 0) {
+        filesList.innerHTML = `
+          <div id="emptyState" class="border border-slate-800 bg-slate-900/30 p-12 rounded-lg text-center">
+            <svg class="w-12 h-12 text-slate-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-slate-400 text-sm">No files yet. Upload something to get started!</p>
+          </div>
+        `;
+      } else {
+        filesList.innerHTML = files
+          .map(
+            (file) => `
+          <div class="border border-slate-800 bg-slate-900/50 hover:bg-slate-900/70 transition-colors p-4 rounded-lg flex items-center justify-between group">
+            <div class="flex items-center gap-4 flex-1 min-w-0">
+              <div class="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-slate-50 truncate">${file.filename}</p>
+                <p class="text-xs text-slate-500">${file.size} • ${file.uploadTime}</p>
+              </div>
+            </div>
+            
+            <div class="flex items-center gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button class="text-slate-400 hover:text-blue-400 hover:bg-slate-800 p-2 rounded transition-colors" title="Download">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+              </button>
+              <button class="text-slate-400 hover:text-red-400 hover:bg-slate-800 p-2 rounded transition-colors" title="Delete" onclick="deleteFile('${file.id}')">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+              </button>
+              <button class="text-slate-400 hover:text-slate-50 hover:bg-slate-800 p-2 rounded transition-colors">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      fileCount.textContent = `${files.length} file${files.length !== 1 ? "s" : ""}`;
+    }
+
+    function deleteFile(id) {
+      files = files.filter((f) => f.id !== id);
+      renderFiles();
+    }
+
+    document.getElementById("fileInput").addEventListener("change", function (e) {
+      const file = e.target.files?.[0];
+      if (file) {
+        const newFile = {
+          id: Date.now().toString(),
+          filename: file.name,
+          size: (file.size / 1024 / 1024).toFixed(1) + " MB",
+          uploadTime: "just now",
+        };
+        files.unshift(newFile);
+        renderFiles();
+        this.value = "";
+      }
+    });
+
+    // Initial render
+    renderFiles();
+  </script>
+</body>
+</html>
