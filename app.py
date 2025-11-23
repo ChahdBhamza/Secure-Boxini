@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key_here"
+app.secret_key = os.getenv("SECRET_KEY", "dev_key_please_change_in_production")
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
