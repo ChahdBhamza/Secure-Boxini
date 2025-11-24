@@ -40,7 +40,17 @@ mail = Mail(app)
 client = MongoClient("mongodb://localhost:27017/")
 db = client.SecureBoxini
 users_col = db.users
-files_col = db.files  
+files_col = db.files
+logs_col = db.logs
+
+def log_activity(email, action, details=None):
+    """Helper to log user activity"""
+    logs_col.insert_one({
+        "email": email,
+        "action": action,
+        "details": details,
+        "timestamp": datetime.now()
+    })
 
 # ------------------- Home → Register -------------------
 @app.route('/')
@@ -71,8 +81,11 @@ def register():
             "password": generate_password_hash(password),
             "created_at": datetime.now(),
             "is_verified": False,
-            "verification_token": token
+            "verification_token": token,
+            "profile_pic": "default.png" # Default profile picture
         })
+        
+        log_activity(email, "User Registered")
 
         # Send Verification Email
         try:
@@ -109,6 +122,7 @@ def login():
                  return render_template("login.html", error="Please verify your email first.")
 
             session["user"] = useremail
+            log_activity(useremail, "User Logged In")
             return redirect(url_for("dashboard"))
 
         return render_template("login.html", error="Invalid username or password")
@@ -126,9 +140,46 @@ def verify_email(token):
         )
         # Auto-login the user
         session["user"] = user["email"]
+        log_activity(user["email"], "Email Verified")
         return redirect(url_for("dashboard"))
     else:
-        return "Invalid or expired verification link."
+        return render_template("verification_failed.html")
+
+@app.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification():
+    if request.method == "POST":
+        email = request.form["email"].lower().strip()
+        user = users_col.find_one({"email": email})
+
+        if not user:
+            # Security: Don't reveal if user exists
+            return render_template("email_verification_sent.html", email=email)
+            
+        if user.get("is_verified"):
+            return render_template("login.html", error="Account already verified. Please login.")
+
+        # Generate new token
+        token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+        users_col.update_one(
+            {"email": email},
+            {"$set": {"verification_token": token}}
+        )
+
+        # Send Verification Email
+        try:
+            verify_url = url_for('verify_email', token=token, _external=True)
+            msg = Message('SecureBox - Verify your Email', 
+                          sender=app.config['MAIL_USERNAME'], 
+                          recipients=[email])
+            msg.body = f"Welcome to SecureBox! Please click the link to verify your account: {verify_url}"
+            mail.send(msg)
+        except Exception as e:
+            print(f"Error sending verification email: {e}")
+            return render_template("resend_verification.html", error="Failed to send email. Please try again.")
+
+        return render_template("email_verification_sent.html", email=email)
+
+    return render_template("resend_verification.html")
 
 # ------------------- Google Auth Routes -------------------
 @app.route('/google/login')
@@ -157,8 +208,11 @@ def google_callback():
             "email": email,
             "password": generate_password_hash(random_password),
             "created_at": datetime.now(),
-            "auth_provider": "google"
+            "created_at": datetime.now(),
+            "auth_provider": "google",
+            "profile_pic": user_info.get('picture', 'default.png')
         })
+        log_activity(email, "User Registered via Google")
     else:
         # User exists, check if they are a Google user
         if user.get("auth_provider") != "google":
@@ -167,6 +221,7 @@ def google_callback():
         # If they are a Google user, we're good to go (we could update info here if needed)
     
     session["user"] = email
+    log_activity(email, "User Logged In via Google")
     return redirect(url_for("dashboard"))
 
 # ------------------- Dashboard (upload + list files) -------------------
@@ -186,9 +241,16 @@ def dashboard():
             "stored_name": filename,
             "upload_time": datetime.now()
         })
+        
+        log_activity(session["user"], "File Uploaded", f"Filename: {filename}")
 
     user_files = list(files_col.find({"user": session["user"]}))
     return render_template("dashboard.html", files=user_files)
+
+# ------------------- Serve Uploaded File -------------------
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 # ------------------- Download -------------------
 @app.route("/download/<filename>")
@@ -205,6 +267,8 @@ def download(filename):
 # ------------------- Logout -------------------
 @app.route("/logout")
 def logout():
+    if "user" in session:
+        log_activity(session["user"], "User Logged Out")
     session.pop("user", None)
     return redirect(url_for("login"))
 
@@ -218,6 +282,9 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client.SecureBoxini
 users_col = db.users
 files_col = db.files
+users_col = db.users
+files_col = db.files
+logs_col = db.logs # Ensure this is here too if re-declared
 reset_codes_col = db.reset_codes # New collection for codes
 
 # ... (existing routes)
@@ -318,6 +385,76 @@ def reset_password():
         
     return render_template("reset_password.html")
 
-# ------------------- Run App -------------------
+    return render_template("reset_password.html")
+
+# ------------------- Profile & Logs -------------------
+from bson.objectid import ObjectId
+
+@app.route("/profile", methods=["GET", "POST"])
+def profile():
+    if "user" not in session:
+        return redirect(url_for("login"))
+        
+    user_email = session["user"]
+    user = users_col.find_one({"email": user_email})
+    
+    if request.method == "POST":
+        # Handle Profile Picture Upload
+        if "profile_pic" in request.files:
+            file = request.files["profile_pic"]
+            if file.filename != "":
+                filename = secure_filename(f"profile_{user_email}_{file.filename}")
+                file.save(os.path.join(UPLOAD_FOLDER, filename))
+                
+                users_col.update_one(
+                    {"email": user_email},
+                    {"$set": {"profile_pic": filename}}
+                )
+                log_activity(user_email, "Profile Picture Updated")
+                return redirect(url_for("profile"))
+
+    # Fetch Logs
+    logs = list(logs_col.find({"email": user_email}).sort("timestamp", -1))
+    
+    return render_template("profile.html", user=user, logs=logs)
+
+@app.route("/change_password", methods=["POST"])
+def change_password():
+    if "user" not in session:
+        return redirect(url_for("login"))
+        
+    user_email = session["user"]
+    user = users_col.find_one({"email": user_email})
+    
+    current_password = request.form["current_password"]
+    new_password = request.form["new_password"]
+    confirm_password = request.form["confirm_password"]
+    
+    if not check_password_hash(user["password"], current_password):
+        return render_template("profile.html", user=user, logs=list(logs_col.find({"email": user_email}).sort("timestamp", -1)), error="Incorrect current password")
+        
+    if new_password != confirm_password:
+        return render_template("profile.html", user=user, logs=list(logs_col.find({"email": user_email}).sort("timestamp", -1)), error="New passwords do not match")
+        
+    users_col.update_one(
+        {"email": user_email},
+        {"$set": {"password": generate_password_hash(new_password)}}
+    )
+    
+    log_activity(user_email, "Password Changed")
+    return render_template("profile.html", user=user, logs=list(logs_col.find({"email": user_email}).sort("timestamp", -1)), success="Password changed successfully")
+
+@app.route("/delete_log/<log_id>")
+def delete_log(log_id):
+    if "user" not in session:
+        return redirect(url_for("login"))
+        
+    # Ensure log belongs to user
+    logs_col.delete_one({
+        "_id": ObjectId(log_id), 
+        "email": session["user"]
+    })
+    
+    return redirect(url_for("profile"))
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

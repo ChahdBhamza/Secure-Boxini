@@ -23,10 +23,16 @@
           </div>
           <h1 class="text-xl font-semibold">SecureBox</h1>
         </div>
-        <a href="{{ url_for('logout') }}"
-          class="text-slate-400 hover:text-slate-50 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
-          Logout
-        </a>
+        <div class="flex items-center gap-4">
+          <a href="{{ url_for('profile') }}"
+            class="text-slate-400 hover:text-slate-50 text-sm font-medium transition-colors">
+            Profile
+          </a>
+          <a href="{{ url_for('logout') }}"
+            class="text-slate-400 hover:text-slate-50 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">
+            Logout
+          </a>
+        </div>
       </div>
     </div>
 

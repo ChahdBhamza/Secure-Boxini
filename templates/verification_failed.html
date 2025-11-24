@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Failed - SecureBox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body
+    class="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-md">
+        <div class="bg-slate-800/50 backdrop-blur border border-red-500/30 rounded-2xl p-8 shadow-2xl text-center">
+            <div class="mb-6">
+                <svg class="w-16 h-16 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                    </path>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white mb-4">Verification Failed</h2>
+            <p class="text-slate-400 mb-6">
+                The verification link is invalid or has expired.
+            </p>
+            <a href="{{ url_for('resend_verification') }}"
+                class="inline-block w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold py-3 px-6 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg shadow-blue-500/20">
+                Resend Verification Link
+            </a>
+            <div class="mt-6">
+                <a href="{{ url_for('login') }}" class="text-slate-500 hover:text-slate-400 transition text-sm">Back to
+                    Login</a>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
