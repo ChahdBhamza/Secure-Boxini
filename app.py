@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import random
 import string
+import uuid
 from authlib.integrations.flask_client import OAuth
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
@@ -233,18 +234,44 @@ def dashboard():
     if request.method == "POST":
         file = request.files["file"]
         filename = secure_filename(file.filename)
-        file.save(os.path.join(UPLOAD_FOLDER, filename))
+        # Generate unique stored name
+        stored_filename = f"{uuid.uuid4().hex}_{filename}"
+        file.save(os.path.join(UPLOAD_FOLDER, stored_filename))
 
+        # Get file size
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        
         files_col.insert_one({
             "user": session["user"],
             "filename": filename,
-            "stored_name": filename,
+            "stored_name": stored_filename,
+            "size": file_size,
             "upload_time": datetime.now()
         })
         
         log_activity(session["user"], "File Uploaded", f"Filename: {filename}")
 
-    user_files = list(files_col.find({"user": session["user"]}))
+    user_files = list(files_col.find({"user": session["user"]}).sort("upload_time", -1))
+    
+    # Format files for display
+    for f in user_files:
+        # Format size
+        size_bytes = f.get("size", 0)
+        if size_bytes < 1024:
+            f["display_size"] = f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            f["display_size"] = f"{size_bytes / 1024:.1f} KB"
+        else:
+            f["display_size"] = f"{size_bytes / (1024 * 1024):.1f} MB"
+            
+        # Format time (e.g., "2023-10-27 10:00:00")
+        if "upload_time" in f:
+            f["display_time"] = f["upload_time"].strftime("%Y-%m-%d %H:%M")
+        else:
+            f["display_time"] = "Unknown"
+
     return render_template("dashboard.html", files=user_files)
 
 # ------------------- Serve Uploaded File -------------------
@@ -253,16 +280,52 @@ def uploaded_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 # ------------------- Download -------------------
-@app.route("/download/<filename>")
-def download(filename):
+@app.route("/download/<file_id>")
+def download(file_id):
     if "user" not in session:
         return redirect(url_for("login"))
 
-    file_doc = files_col.find_one({"user": session["user"], "filename": filename})
+    try:
+        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user": session["user"]})
+    except:
+        return "Invalid file ID"
+        
     if not file_doc:
         return "File not found or not authorized"
 
-    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+    # Increment download count
+    files_col.update_one(
+        {"_id": file_doc["_id"]},
+        {"$inc": {"download_count": 1}}
+    )
+
+    return send_from_directory(UPLOAD_FOLDER, file_doc["stored_name"], as_attachment=True, download_name=file_doc["filename"])
+
+# ------------------- Delete File -------------------
+@app.route("/delete_file/<file_id>")
+def delete_file(file_id):
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    try:
+        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user": session["user"]})
+    except:
+        return "Invalid file ID"
+        
+    if not file_doc:
+        return "File not found or not authorized"
+
+    # Remove from disk
+    try:
+        os.remove(os.path.join(UPLOAD_FOLDER, file_doc["stored_name"]))
+    except FileNotFoundError:
+        pass # File might already be gone, just remove from DB
+
+    # Remove from DB
+    files_col.delete_one({"_id": ObjectId(file_id)})
+    
+    log_activity(session["user"], "File Deleted", f"Filename: {file_doc['filename']}")
+    return redirect(url_for("dashboard"))
 
 # ------------------- Logout -------------------
 @app.route("/logout")
