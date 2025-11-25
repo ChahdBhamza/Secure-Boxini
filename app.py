@@ -10,11 +10,25 @@ import uuid
 from authlib.integrations.flask_client import OAuth
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
+import pyotp
+import qrcode
+import io
+import base64
+import pyotp
+import qrcode
+import io
+import base64
 
 load_dotenv()
 
+# Allow OAuth over HTTP for local development
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev_key_please_change_in_production")
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -116,19 +130,110 @@ def login():
             return render_template("login.html", error="User not found")
 
         # Verify password
-        # Verify password
         if user and check_password_hash(user["password"], password):
             # Check if verified
             if user.get("is_verified") is False:
                  return render_template("login.html", error="Please verify your email first.")
 
-            session["user"] = useremail
-            log_activity(useremail, "User Logged In")
-            return redirect(url_for("dashboard"))
+            # MANDATORY 2FA CHECK
+            if user.get("is_2fa_enabled"):
+                session["pre_2fa_user"] = useremail
+                return redirect(url_for("verify_2fa_login"))
+            else:
+                # Force Setup
+                session["user"] = useremail # Temporarily log them in to set up 2FA
+                return redirect(url_for("enable_2fa"))
 
         return render_template("login.html", error="Invalid username or password")
 
     return render_template("login.html")
+
+@app.route("/verify-2fa-login", methods=["GET", "POST"])
+def verify_2fa_login():
+    if "pre_2fa_user" not in session:
+        return redirect(url_for("login"))
+        
+    if request.method == "POST":
+        code = request.form.get("code")
+        user = users_col.find_one({"email": session["pre_2fa_user"]})
+        
+        if not user or not user.get("totp_secret"):
+            session.pop("pre_2fa_user", None)
+            return redirect(url_for("login"))
+            
+        totp = pyotp.TOTP(user["totp_secret"])
+        if totp.verify(code):
+            session["user"] = session["pre_2fa_user"]
+            session.pop("pre_2fa_user", None)
+            log_activity(session["user"], "User Logged In (2FA)")
+            return redirect(url_for("dashboard"))
+        else:
+            return render_template("verify_2fa.html", error="Invalid Code")
+            
+    return render_template("verify_2fa.html")
+
+@app.route("/enable-2fa")
+def enable_2fa():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    
+    user = users_col.find_one({"email": session["user"]})
+    if not user:
+        return redirect(url_for("login"))
+
+    # Generate secret if not exists
+    secret = user.get("totp_secret")
+    if not secret:
+        secret = pyotp.random_base32()
+        users_col.update_one(
+            {"email": session["user"]},
+            {"$set": {"totp_secret": secret}}
+        )
+    
+    # Generate QR Code
+    totp = pyotp.TOTP(secret)
+    # Provisioning URI for Google Authenticator
+    uri = totp.provisioning_uri(name=user["email"], issuer_name="SecureBox")
+    
+    img = qrcode.make(uri)
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    
+    return render_template("enable_2fa.html", qr_code=img_str, secret=secret)
+
+@app.route("/verify-2fa-setup", methods=["POST"])
+def verify_2fa_setup():
+    if "user" not in session:
+        return redirect(url_for("login"))
+        
+    code = request.form.get("code")
+    user = users_col.find_one({"email": session["user"]})
+    secret = user.get("totp_secret")
+    
+    if not secret:
+        return "2FA not initiated", 400
+        
+    totp = pyotp.TOTP(secret)
+    if totp.verify(code):
+        users_col.update_one(
+            {"email": session["user"]},
+            {"$set": {"is_2fa_enabled": True}}
+        )
+        log_activity(session["user"], "2FA Enabled")
+        return redirect(url_for("dashboard"))
+    else:
+        # Stay on same page with error
+        user = users_col.find_one({"email": session["user"]})
+        secret = user.get("totp_secret")
+        # Re-generate QR code for display
+        totp = pyotp.TOTP(secret)
+        uri = totp.provisioning_uri(name=user["email"], issuer_name="SecureBox")
+        img = qrcode.make(uri)
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        return render_template("enable_2fa.html", qr_code=img_str, secret=secret, error="Invalid Code")
 
 # ------------------- Email Verification Route -------------------
 @app.route("/verify-email/<token>")
@@ -213,7 +318,10 @@ def google_callback():
             "auth_provider": "google",
             "profile_pic": user_info.get('picture', 'default.png')
         })
+       
         log_activity(email, "User Registered via Google")
+        # Reload user so we can use it below
+        user = users_col.find_one({"email": email})
     else:
         # User exists, check if they are a Google user
         if user.get("auth_provider") != "google":
@@ -221,9 +329,14 @@ def google_callback():
         
         # If they are a Google user, we're good to go (we could update info here if needed)
     
-    session["user"] = email
-    log_activity(email, "User Logged In via Google")
-    return redirect(url_for("dashboard"))
+    # MANDATORY 2FA CHECK FOR GOOGLE LOGIN
+    if user.get("is_2fa_enabled"):
+        session["pre_2fa_user"] = email
+        return redirect(url_for("verify_2fa_login"))
+    else:
+        # Force Setup
+        session["user"] = email
+        return redirect(url_for("enable_2fa"))
 
 # ------------------- Dashboard (upload + list files) -------------------
 @app.route("/dashboard", methods=["GET", "POST"])
@@ -519,5 +632,32 @@ def delete_log(log_id):
     })
     
     return redirect(url_for("profile"))
+
+@app.route("/delete_account", methods=["POST"])
+def delete_account():
+    if "user" not in session:
+        return redirect(url_for("login"))
+        
+    user_email = session["user"]
+    
+    # 1. Delete Files (Physical and DB)
+    user_files = files_col.find({"user": user_email})
+    for f in user_files:
+        try:
+            os.remove(os.path.join(UPLOAD_FOLDER, f["stored_name"]))
+        except OSError:
+            pass # File might be missing
+    files_col.delete_many({"user": user_email})
+    
+    # 2. Delete Logs
+    logs_col.delete_many({"email": user_email})
+    
+    # 3. Delete User
+    users_col.delete_one({"email": user_email})
+    
+    # 4. Logout
+    session.pop("user", None)
+    
+    return redirect(url_for("register"))
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
