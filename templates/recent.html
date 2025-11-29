@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recently Viewed - SecureBox</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-950 text-slate-50 min-h-screen">
+  <div class="min-h-screen">
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
+      <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <a href="{{ url_for('dashboard') }}"
+            class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center hover:opacity-90 transition-opacity"
+            title="Back to dashboard">
+            <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3v-6"></path>
+            </svg>
+          </a>
+          <h1 class="text-xl font-semibold">SecureBox</h1>
+        </div>
+        <div class="flex items-center gap-4 text-sm font-medium">
+
+          <a href="{{ url_for('profile') }}" class="text-slate-400 hover:text-slate-50 transition-colors">Profile</a>
+          <a href="{{ url_for('logout') }}"
+            class="text-slate-400 hover:text-red-400 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
+            Logout
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <main class="max-w-6xl mx-auto px-6 py-12 space-y-8">
+      <section>
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <p class="uppercase text-xs text-slate-500 tracking-[0.3em] mb-2">Activity</p>
+            <h2 class="text-3xl font-semibold text-white">Recently Viewed</h2>
+            <p class="text-slate-400 mt-2">Files you opened, downloaded, or previewed lately.</p>
+          </div>
+          <a href="{{ url_for('dashboard') }}"
+            class="inline-flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12h18M3 12l7-7m-7 7l7 7">
+              </path>
+            </svg>
+            Back to dashboard
+          </a>
+        </div>
+
+        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {% for file in files %}
+          <div
+            class="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 flex flex-col gap-4 hover:border-slate-700 hover:bg-slate-900/70 transition-colors">
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3">
+                <div
+                  class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-300">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                    <polyline points="13 2 13 9 20 9" />
+                  </svg>
+                </div>
+                <div>
+                  <p class="font-semibold text-slate-50 break-all">{{ file.filename }}</p>
+                  <p class="text-xs text-slate-500 mt-1">{{ file.viewed_at }}</p>
+                </div>
+              </div>
+              <!-- Badge removed per request -->
+            </div>
+
+            <div
+              class="w-full h-48 bg-slate-950/50 rounded-xl overflow-hidden border border-slate-800/50 flex items-center justify-center my-2">
+              {% if file.preview_type == 'image' %}
+              <img src="{{ url_for('preview_file_content', file_id=file._id) }}" class="w-full h-full object-contain"
+                alt="{{ file.filename }}">
+              {% elif file.preview_type == 'pdf' %}
+              <iframe src="{{ url_for('preview_file_content', file_id=file._id) }}"
+                class="w-full h-full border-0"></iframe>
+              {% elif file.preview_type == 'text' %}
+              <iframe src="{{ url_for('preview_file_content', file_id=file._id) }}"
+                class="w-full h-full border-0 bg-white"></iframe>
+              {% else %}
+              <div class="text-slate-600 flex flex-col items-center">
+                <svg class="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                  </path>
+                </svg>
+                <span class="text-xs">No preview</span>
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="flex items-center justify-between text-sm text-slate-400">
+              <span>{{ file.display_size }}</span>
+            </div>
+
+            <div class="flex gap-3">
+              <a href="{{ url_for('preview_file', file_id=file._id) }}"
+                class="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-xl px-4 py-2 text-center text-sm font-medium hover:from-blue-500 hover:to-cyan-400 transition-colors">
+                View inline
+              </a>
+
+            </div>
+
+          </div>
+          {% else %}
+          <div class="col-span-full text-center border border-dashed border-slate-800 rounded-3xl py-16">
+            <svg class="w-12 h-12 text-slate-700 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 17v-2a2 2 0 00-2-2H5m14 4v-2a2 2 0 012-2h2M9 7v2a2 2 0 002 2h2M5 7a2 2 0 012-2h2m4 0h2a2 2 0 012 2v2" />
+            </svg>
+            <h3 class="text-lg font-semibold text-white mb-2">No recent files yet</h3>
+            <p class="text-slate-500 mb-6">Open, preview, or download files and they will show up here.</p>
+            <a href="{{ url_for('dashboard') }}"
+              class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
+              Upload files
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"></path>
+              </svg>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>

@@ -1,12 +1,13 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from pymongo import MongoClient
+from gridfs import GridFS
+from bson.objectid import ObjectId
 import os
 from datetime import datetime
 import random
 import string
-import uuid
 from authlib.integrations.flask_client import OAuth
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
@@ -14,10 +15,7 @@ import pyotp
 import qrcode
 import io
 import base64
-import pyotp
-import qrcode
-import io
-import base64
+from session_interface import MongoSessionInterface
 
 load_dotenv()
 
@@ -29,6 +27,7 @@ app.secret_key = os.getenv("SECRET_KEY", "dev_key_please_change_in_production")
 app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_NAME'] = 'securebox_session'
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -52,19 +51,32 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 mail = Mail(app)
 
 # ------------------- MongoDB Connection -------------------
+import uuid
+
 client = MongoClient("mongodb://localhost:27017/")
-db = client.SecureBoxini
+db = client.SecureBoxinii  # Using new database with user_id structure
 users_col = db.users
 files_col = db.files
-logs_col = db.logs
+activity_logs_col = db.activity_logs
+password_reset_tokens_col = db.password_reset_tokens
+reset_codes_col = db.reset_codes
+fs = GridFS(db)
 
-def log_activity(email, action, details=None):
-    """Helper to log user activity"""
-    logs_col.insert_one({
-        "email": email,
+# Configure Session Interface
+app.session_interface = MongoSessionInterface(db)
+
+
+
+def log_activity(user_id, action, details=None, action_category="general"):
+    """Helper to log user activity with user_id"""
+    activity_logs_col.insert_one({
+        "user_id": user_id,
         "action": action,
-        "details": details,
-        "timestamp": datetime.now()
+        "action_category": action_category,
+        "details": details if isinstance(details, dict) else {"message": details} if details else None,
+        "timestamp": datetime.utcnow(),
+        "ip_address": request.remote_addr if request else None,
+        "user_agent": request.headers.get('User-Agent') if request else None
     })
 
 # ------------------- Home → Register -------------------
@@ -80,27 +92,39 @@ def register():
         email = request.form["email"].lower().strip()
         password = request.form["password"]
 
-        # Check if user exists
+        # Check if user exists (using email_normalized)
         if users_col.find_one({"username": username}):
-            return "Username already exists!"
+            return render_template("registration.html", 
+                                 error="Username already exists!")
         
-        if users_col.find_one({"email": email}):
-            return "Email already exists!"
+        existing_user = users_col.find_one({"email_normalized": email})
+        if existing_user:
+            # Check if user registered with Google
+            if existing_user.get("oauth_provider") == "google":
+                return render_template("registration.html", 
+                                     error="An account with this email already exists with Google. Please login with Google instead.")
+            return render_template("registration.html", 
+                                 error="Email already exists!")
 
-        # Create new user
-        # Create new user
+        # Create new user with user_id
+        user_id = str(uuid.uuid4())
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
         users_col.insert_one({
+            "user_id": user_id,
             "username": username,
             "email": email,
-            "password": generate_password_hash(password),
-            "created_at": datetime.now(),
+            "email_normalized": email,
+            "password_hash": generate_password_hash(password),
+            "created_at": datetime.utcnow(),
             "is_verified": False,
+            "is_2fa_enabled": False,
+            "status": "active",
             "verification_token": token,
-            "profile_pic": "default.png" # Default profile picture
+            "profile_picture": None,
+            "last_login_at": None
         })
         
-        log_activity(email, "User Registered")
+        log_activity(user_id, "user_registered", action_category="auth")
 
         # Send Verification Email
         try:
@@ -125,23 +149,32 @@ def login():
         useremail = request.form["email"].lower().strip()
         password = request.form["password"]
 
-        user = users_col.find_one({"email": useremail})
-        if  not user :
+        # Use email_normalized for lookup
+        user = users_col.find_one({"email_normalized": useremail})
+        if not user:
             return render_template("login.html", error="User not found")
 
-        # Verify password
-        if user and check_password_hash(user["password"], password):
+        # Verify password (using password_hash field)
+        if user and check_password_hash(user["password_hash"], password):
             # Check if verified
             if user.get("is_verified") is False:
                  return render_template("login.html", error="Please verify your email first.")
 
+            # Update last login time
+            users_col.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"last_login_at": datetime.utcnow()}}
+            )
+
             # MANDATORY 2FA CHECK
             if user.get("is_2fa_enabled"):
-                session["pre_2fa_user"] = useremail
+                session["pre_2fa_user_id"] = user["user_id"]
+                session["pre_2fa_email"] = user["email"]
                 return redirect(url_for("verify_2fa_login"))
             else:
-                # Force Setup
-                session["user"] = useremail # Temporarily log them in to set up 2FA
+                # Force Setup - store user_id and email in session
+                session["user_id"] = user["user_id"]
+                session["email"] = user["email"]
                 return redirect(url_for("enable_2fa"))
 
         return render_template("login.html", error="Invalid username or password")
@@ -150,22 +183,25 @@ def login():
 
 @app.route("/verify-2fa-login", methods=["GET", "POST"])
 def verify_2fa_login():
-    if "pre_2fa_user" not in session:
+    if "pre_2fa_user_id" not in session:
         return redirect(url_for("login"))
         
     if request.method == "POST":
         code = request.form.get("code")
-        user = users_col.find_one({"email": session["pre_2fa_user"]})
+        user = users_col.find_one({"user_id": session["pre_2fa_user_id"]})
         
         if not user or not user.get("totp_secret"):
-            session.pop("pre_2fa_user", None)
+            session.pop("pre_2fa_user_id", None)
+            session.pop("pre_2fa_email", None)
             return redirect(url_for("login"))
             
         totp = pyotp.TOTP(user["totp_secret"])
         if totp.verify(code):
-            session["user"] = session["pre_2fa_user"]
-            session.pop("pre_2fa_user", None)
-            log_activity(session["user"], "User Logged In (2FA)")
+            session["user_id"] = session["pre_2fa_user_id"]
+            session["email"] = session["pre_2fa_email"]
+            session.pop("pre_2fa_user_id", None)
+            session.pop("pre_2fa_email", None)
+            log_activity(session["user_id"], "user_login", {"2fa": True}, action_category="auth")
             return redirect(url_for("dashboard"))
         else:
             return render_template("verify_2fa.html", error="Invalid Code")
@@ -174,10 +210,10 @@ def verify_2fa_login():
 
 @app.route("/enable-2fa")
 def enable_2fa():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
     
-    user = users_col.find_one({"email": session["user"]})
+    user = users_col.find_one({"user_id": session["user_id"]})
     if not user:
         return redirect(url_for("login"))
 
@@ -186,7 +222,7 @@ def enable_2fa():
     if not secret:
         secret = pyotp.random_base32()
         users_col.update_one(
-            {"email": session["user"]},
+            {"user_id": session["user_id"]},
             {"$set": {"totp_secret": secret}}
         )
     
@@ -204,11 +240,11 @@ def enable_2fa():
 
 @app.route("/verify-2fa-setup", methods=["POST"])
 def verify_2fa_setup():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
         
     code = request.form.get("code")
-    user = users_col.find_one({"email": session["user"]})
+    user = users_col.find_one({"user_id": session["user_id"]})
     secret = user.get("totp_secret")
     
     if not secret:
@@ -217,14 +253,14 @@ def verify_2fa_setup():
     totp = pyotp.TOTP(secret)
     if totp.verify(code):
         users_col.update_one(
-            {"email": session["user"]},
+            {"user_id": session["user_id"]},
             {"$set": {"is_2fa_enabled": True}}
         )
-        log_activity(session["user"], "2FA Enabled")
+        log_activity(session["user_id"], "2fa_enabled", action_category="auth")
         return redirect(url_for("dashboard"))
     else:
         # Stay on same page with error
-        user = users_col.find_one({"email": session["user"]})
+        user = users_col.find_one({"user_id": session["user_id"]})
         secret = user.get("totp_secret")
         # Re-generate QR code for display
         totp = pyotp.TOTP(secret)
@@ -235,6 +271,8 @@ def verify_2fa_setup():
         img_str = base64.b64encode(buffered.getvalue()).decode()
         return render_template("enable_2fa.html", qr_code=img_str, secret=secret, error="Invalid Code")
 
+
+
 # ------------------- Email Verification Route -------------------
 @app.route("/verify-email/<token>")
 def verify_email(token):
@@ -244,9 +282,10 @@ def verify_email(token):
             {"_id": user["_id"]},
             {"$set": {"is_verified": True}, "$unset": {"verification_token": ""}}
         )
-        # Auto-login the user
-        session["user"] = user["email"]
-        log_activity(user["email"], "Email Verified")
+        # Auto-login the user with user_id
+        session["user_id"] = user["user_id"]
+        session["email"] = user["email"]
+        log_activity(user["user_id"], "email_verified", action_category="auth")
         return redirect(url_for("dashboard"))
     else:
         return render_template("verification_failed.html")
@@ -255,11 +294,10 @@ def verify_email(token):
 def resend_verification():
     if request.method == "POST":
         email = request.form["email"].lower().strip()
-        user = users_col.find_one({"email": email})
-
+        user = users_col.find_one({"email_normalized": email})
+        
         if not user:
-            # Security: Don't reveal if user exists
-            return render_template("email_verification_sent.html", email=email)
+            return render_template("resend_verification.html", error="Email not found")
             
         if user.get("is_verified"):
             return render_template("login.html", error="Account already verified. Please login.")
@@ -267,7 +305,7 @@ def resend_verification():
         # Generate new token
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
         users_col.update_one(
-            {"email": email},
+            {"_id": user["_id"]},
             {"$set": {"verification_token": token}}
         )
 
@@ -302,71 +340,102 @@ def google_callback():
     user_info = resp.json()
     
     email = user_info['email'].lower().strip()
-    # Check if user exists
-    user = users_col.find_one({"email": email})
+    # Check if user exists - check both email_normalized and email fields for backward compatibility
+    user = users_col.find_one({
+        "$or": [
+            {"email_normalized": email},
+            {"email": email}
+        ]
+    })
     
     if not user:
         # Create new user from Google info
         # We'll use a random password since they login with Google
         random_password = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-        users_col.insert_one({
+        user_id = str(uuid.uuid4())
+        
+        new_user = {
+            "user_id": user_id,
             "username": user_info.get('name', email.split('@')[0]),
             "email": email,
-            "password": generate_password_hash(random_password),
-            "created_at": datetime.now(),
-            "created_at": datetime.now(),
-            "auth_provider": "google",
-            "profile_pic": user_info.get('picture', 'default.png')
-        })
-       
-        log_activity(email, "User Registered via Google")
-        # Reload user so we can use it below
-        user = users_col.find_one({"email": email})
+            "email_normalized": email,
+            "password_hash": generate_password_hash(random_password),
+            "created_at": datetime.utcnow(),
+            "is_verified": True, # Google users are verified
+            "is_2fa_enabled": False,
+            "status": "active",
+            "oauth_provider": "google",
+            "profile_picture": user_info.get('picture'),
+            "last_login_at": datetime.utcnow()
+        }
+        users_col.insert_one(new_user)
+        session["user_id"] = user_id
+        session["email"] = email
+        log_activity(user_id, "user_registered_google", action_category="auth")
     else:
-        # User exists, check if they are a Google user
-        if user.get("auth_provider") != "google":
-            return render_template("login.html", error="Account exists with another form of authentication.")
+        # User exists - check if they registered with email/password
+        user_oauth_provider = user.get("oauth_provider")
         
-        # If they are a Google user, we're good to go (we could update info here if needed)
+        # If user exists but doesn't have Google as auth provider (or oauth_provider is None/missing),
+        # it means they registered with email/password - block Google login
+        if user_oauth_provider is None or user_oauth_provider != "google":
+            return render_template("login.html", 
+                                 error="An account with this email already exists. Please login with your email and password instead of Google.")
+        
+        # User exists and has Google auth - allow login
+        users_col.update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "last_login_at": datetime.utcnow()
+            }}
+        )
+        session["user_id"] = user.get("user_id") or str(user["_id"])
+        session["email"] = user.get("email") or email
     
-    # MANDATORY 2FA CHECK FOR GOOGLE LOGIN
-    if user.get("is_2fa_enabled"):
-        session["pre_2fa_user"] = email
-        return redirect(url_for("verify_2fa_login"))
-    else:
-        # Force Setup
-        session["user"] = email
-        return redirect(url_for("enable_2fa"))
+    log_activity(session["user_id"], "user_login_google", action_category="auth")
+    return redirect(url_for("dashboard"))
 
 # ------------------- Dashboard (upload + list files) -------------------
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
 
     if request.method == "POST":
         file = request.files["file"]
-        filename = secure_filename(file.filename)
-        # Generate unique stored name
-        stored_filename = f"{uuid.uuid4().hex}_{filename}"
-        file.save(os.path.join(UPLOAD_FOLDER, stored_filename))
+        if not file or file.filename == "":
+            return redirect(url_for("dashboard"))
 
-        # Get file size
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
-        
+        filename = secure_filename(file.filename)
+        file_bytes = file.read()
+        file_size = len(file_bytes)
+
+        grid_id = fs.put(
+            file_bytes,
+            filename=filename,
+            content_type=file.content_type
+        )
+
+        # Create file document with new structure
         files_col.insert_one({
-            "user": session["user"],
+            "file_id": str(uuid.uuid4()),
+            "user_id": session["user_id"],
             "filename": filename,
-            "stored_name": stored_filename,
+            "original_filename": filename,
+            "grid_fs_id": grid_id,
             "size": file_size,
-            "upload_time": datetime.now()
+            "mime_type": file.content_type or "application/octet-stream",
+            "upload_time": datetime.utcnow(),
+            "last_modified": datetime.utcnow(),
+            "download_count": 0,
+            "status": "active",
+            "is_encrypted": False,
+            "tags": []
         })
         
-        log_activity(session["user"], "File Uploaded", f"Filename: {filename}")
+        log_activity(session["user_id"], "file_uploaded", {"filename": filename}, action_category="file")
 
-    user_files = list(files_col.find({"user": session["user"]}).sort("upload_time", -1))
+    user_files = list(files_col.find({"user_id": session["user_id"], "status": "active"}).sort("upload_time", -1))
     
     # Format files for display
     for f in user_files:
@@ -395,11 +464,11 @@ def uploaded_file(filename):
 # ------------------- Download -------------------
 @app.route("/download/<file_id>")
 def download(file_id):
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
 
     try:
-        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user": session["user"]})
+        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user_id": session["user_id"]})
     except:
         return "Invalid file ID"
         
@@ -412,58 +481,290 @@ def download(file_id):
         {"$inc": {"download_count": 1}}
     )
 
-    return send_from_directory(UPLOAD_FOLDER, file_doc["stored_name"], as_attachment=True, download_name=file_doc["filename"])
+    grid_id = file_doc.get("grid_fs_id") or file_doc.get("grid_id")  # Support both old and new field names
+    if grid_id:
+        try:
+            grid_file = fs.get(grid_id)
+        except Exception:
+            return "Stored file data not found"
 
-# ------------------- Delete File -------------------
-@app.route("/delete_file/<file_id>")
-def delete_file(file_id):
-    if "user" not in session:
+        return send_file(
+            io.BytesIO(grid_file.read()),
+            as_attachment=True,
+            download_name=file_doc["filename"],
+            mimetype=getattr(grid_file, "content_type", "application/octet-stream")
+        )
+
+    # Legacy fallback to disk files
+    stored_name = file_doc.get("stored_name")
+    if stored_name:
+        return send_from_directory(UPLOAD_FOLDER, stored_name, as_attachment=True, download_name=file_doc["filename"])
+
+    return "File storage reference missing"
+
+# ------------------- Preview File -------------------
+@app.route("/preview/<file_id>")
+def preview_file(file_id):
+    # Check for session - support both new (user_id) and old (user/email) session keys
+    user_id = session.get("user_id")
+    user_email = session.get("email") or session.get("user")
+    
+    if not user_id and not user_email:
         return redirect(url_for("login"))
 
     try:
-        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user": session["user"]})
+        # Try to find file - support both new (user_id) and old (user) field names
+        query = {"_id": ObjectId(file_id)}
+        if user_id:
+            query["user_id"] = user_id
+        elif user_email:
+            query["user"] = user_email
+        
+        file_doc = files_col.find_one(query)
     except:
         return "Invalid file ID"
         
     if not file_doc:
         return "File not found or not authorized"
 
-    # Remove from disk
+    # Get file content
+    file_content = None
+    grid_id = file_doc.get("grid_fs_id") or file_doc.get("grid_id")
+    
+    if grid_id:
+        try:
+            grid_file = fs.get(grid_id)
+            file_content = grid_file.read()
+        except Exception:
+            return "Stored file data not found"
+    elif file_doc.get("stored_name"):
+        try:
+            with open(os.path.join(UPLOAD_FOLDER, file_doc["stored_name"]), "rb") as f:
+                file_content = f.read()
+        except FileNotFoundError:
+            return "File not found on disk"
+    else:
+        return "File storage reference missing"
+
+    # Determine preview type
+    filename = file_doc["filename"].lower()
+    preview_type = None
+    preview_content = None
+
+    # Check if it's an image
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+    if any(filename.endswith(ext) for ext in image_extensions):
+        preview_type = 'image'
+        preview_content = base64.b64encode(file_content).decode('utf-8')
+    # Check if it's a PDF
+    elif filename.endswith('.pdf'):
+        preview_type = 'pdf'
+        preview_content = None  # Will be served via separate route
+    # Check if it's a text file
+    elif filename.endswith(('.txt', '.md', '.json', '.xml', '.csv', '.log', '.py', '.js', '.html', '.css')):
+        preview_type = 'text'
+        try:
+            preview_content = file_content.decode('utf-8')
+        except UnicodeDecodeError:
+            preview_type = None
+            preview_content = None
+    else:
+        preview_type = None
+        preview_content = None
+
+    # Format file size for display
+    size_bytes = file_doc.get("size", 0)
+    if size_bytes < 1024:
+        display_size = f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        display_size = f"{size_bytes / 1024:.1f} KB"
+    else:
+        display_size = f"{size_bytes / (1024 * 1024):.1f} MB"
+    
+    # Add display_size to file_doc for template
+    file_doc["display_size"] = display_size
+
+    # Log the preview action
+    log_user_id = user_id or (users_col.find_one({"email": user_email}) or {}).get("user_id")
+    if log_user_id:
+        log_activity(log_user_id, "file_previewed", {"filename": file_doc['filename']}, action_category="file")
+
+    return render_template("preview.html", 
+                         file=file_doc, 
+                         preview_type=preview_type, 
+                         preview_content=preview_content)
+
+# ------------------- Serve File for Preview (PDF, etc.) -------------------
+@app.route("/preview_file_content/<file_id>")
+def preview_file_content(file_id):
+    """Serve file content inline for preview (used for PDFs in iframe)"""
+    # Check for session - support both new (user_id) and old (user/email) session keys
+    user_id = session.get("user_id")
+    user_email = session.get("email") or session.get("user")
+    
+    if not user_id and not user_email:
+        return redirect(url_for("login"))
+
     try:
-        os.remove(os.path.join(UPLOAD_FOLDER, file_doc["stored_name"]))
-    except FileNotFoundError:
-        pass # File might already be gone, just remove from DB
+        # Try to find file - support both new (user_id) and old (user) field names
+        query = {"_id": ObjectId(file_id)}
+        if user_id:
+            query["user_id"] = user_id
+        elif user_email:
+            query["user"] = user_email
+        
+        file_doc = files_col.find_one(query)
+    except:
+        return "Invalid file ID", 404
+        
+    if not file_doc:
+        return "File not found or not authorized", 404
+
+    # Determine content type from filename
+    filename = file_doc["filename"].lower()
+    if filename.endswith('.pdf'):
+        content_type = "application/pdf"
+    elif filename.endswith(('.jpg', '.jpeg')):
+        content_type = "image/jpeg"
+    elif filename.endswith('.png'):
+        content_type = "image/png"
+    elif filename.endswith('.gif'):
+        content_type = "image/gif"
+    else:
+        content_type = "application/octet-stream"
+    
+    # Get file content
+    grid_id = file_doc.get("grid_id")
+    
+    if grid_id:
+        try:
+            grid_file = fs.get(grid_id)
+            file_content = grid_file.read()
+            # Use stored content_type if available, otherwise use detected one
+            stored_type = getattr(grid_file, "content_type", None)
+            return send_file(
+                io.BytesIO(file_content),
+                mimetype=stored_type or content_type,
+                as_attachment=False
+            )
+        except Exception:
+            return "Stored file data not found", 404
+    elif file_doc.get("stored_name"):
+        try:
+            return send_from_directory(
+                UPLOAD_FOLDER, 
+                file_doc["stored_name"], 
+                as_attachment=False,
+                mimetype=content_type
+            )
+        except FileNotFoundError:
+            return "File not found on disk", 404
+            
+    return "File storage reference missing", 404
+
+# ------------------- Delete File -------------------
+@app.route("/delete_file/<file_id>")
+def delete_file(file_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    try:
+        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user_id": session["user_id"]})
+    except:
+        return "Invalid file ID"
+        
+    if not file_doc:
+        return "File not found or not authorized"
+
+    # Remove from GridFS if present, otherwise fall back to disk
+    grid_id = file_doc.get("grid_fs_id") or file_doc.get("grid_id")
+    if grid_id:
+        try:
+            fs.delete(grid_id)
+        except Exception:
+            pass
+    elif file_doc.get("stored_name"):
+        try:
+            os.remove(os.path.join(UPLOAD_FOLDER, file_doc["stored_name"]))
+        except FileNotFoundError:
+            pass # File might already be gone, just remove from DB
 
     # Remove from DB
     files_col.delete_one({"_id": ObjectId(file_id)})
     
-    log_activity(session["user"], "File Deleted", f"Filename: {file_doc['filename']}")
+    log_activity(session["user_id"], "file_deleted", {"filename": file_doc['filename']}, action_category="file")
     return redirect(url_for("dashboard"))
 
+# ------------------- Recently Viewed -------------------
+# ------------------- Recently Viewed -------------------
+@app.route("/recent")
+def recent():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    # Get last 20 actions of type 'file_previewed' or 'file_downloaded'
+    recent_logs = activity_logs_col.find({
+        "user_id": session["user_id"],
+        "action": {"$in": ["file_previewed", "file_downloaded"]}
+    }).sort("timestamp", -1).limit(50)
+    
+    # Deduplicate by filename (show most recent interaction)
+    seen_files = set()
+    recent_files = []
+    
+    for log in recent_logs:
+        details = log.get("details", {})
+        # Handle both old string details and new dict details
+        filename = None
+        if isinstance(details, dict):
+            filename = details.get("filename")
+        elif isinstance(details, str) and "Filename: " in details:
+            filename = details.replace("Filename: ", "")
+            
+        if filename and filename not in seen_files:
+            seen_files.add(filename)
+            # Find the actual file doc to get ID and size
+            file_doc = files_col.find_one({"user_id": session["user_id"], "filename": filename})
+            if file_doc:
+                # Determine preview type
+                filename_lower = file_doc["filename"].lower()
+                preview_type = None
+                if filename_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')):
+                    preview_type = 'image'
+                elif filename_lower.endswith('.pdf'):
+                    preview_type = 'pdf'
+                elif filename_lower.endswith(('.txt', '.md', '.json', '.xml', '.csv', '.log', '.py', '.js', '.html', '.css')):
+                    preview_type = 'text'
+
+                # Format size
+                size_bytes = file_doc.get("size", 0)
+                display_size = "0 B"
+                if size_bytes < 1024:
+                    display_size = f"{size_bytes} B"
+                elif size_bytes < 1024 * 1024:
+                    display_size = f"{size_bytes / 1024:.1f} KB"
+                else:
+                    display_size = f"{size_bytes / (1024 * 1024):.1f} MB"
+                    
+                recent_files.append({
+                    "filename": filename,
+                    "_id": file_doc["_id"],
+                    "display_size": display_size,
+                    "viewed_at": log["timestamp"].strftime("%Y-%m-%d %H:%M"),
+                    "action": log["action"],
+                    "preview_type": preview_type
+                })
+                    
+    return render_template("recent.html", files=recent_files)
+
+        
 # ------------------- Logout -------------------
 @app.route("/logout")
 def logout():
-    if "user" in session:
-        log_activity(session["user"], "User Logged Out")
-    session.pop("user", None)
+    if "user_id" in session:
+        log_activity(session["user_id"], "user_logged_out", action_category="auth")
+    session.clear()
     return redirect(url_for("login"))
-
-import random
-import string
-
-# ... (existing imports)
-
-# ------------------- MongoDB Connection -------------------
-client = MongoClient("mongodb://localhost:27017/")
-db = client.SecureBoxini
-users_col = db.users
-files_col = db.files
-users_col = db.users
-files_col = db.files
-logs_col = db.logs # Ensure this is here too if re-declared
-reset_codes_col = db.reset_codes # New collection for codes
-
-# ... (existing routes)
 
 # ------------------- Forgot Password Flow -------------------
 
@@ -490,11 +791,6 @@ def forgot_password():
         })
         
         # SIMULATE SENDING EMAIL
-        # print(f"============================================")
-        # print(f" EMAIL TO: {email}")
-        # print(f" YOUR RESET CODE IS: {code}")
-        # print(f"============================================")
-        
         try:
             msg = Message('SecureBox - Password Reset Code', 
                           sender=app.config['MAIL_USERNAME'], 
@@ -502,8 +798,6 @@ def forgot_password():
             msg.body = f"Your password reset code is: {code}"
             mail.send(msg)
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             print(f"Error sending email: {e}")
             return render_template("forgot_password.html", error=f"Failed to send email: {str(e)}")
         
@@ -549,7 +843,7 @@ def reset_password():
         # Update password
         users_col.update_one(
             {"email": email},
-            {"$set": {"password": generate_password_hash(password)}}
+            {"$set": {"password_hash": generate_password_hash(password)}}
         )
         
         # Cleanup
@@ -561,102 +855,107 @@ def reset_password():
         
     return render_template("reset_password.html")
 
-    return render_template("reset_password.html")
-
 # ------------------- Profile & Logs -------------------
 from bson.objectid import ObjectId
 
 @app.route("/profile", methods=["GET", "POST"])
 def profile():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
         
-    user_email = session["user"]
-    user = users_col.find_one({"email": user_email})
+    user_id = session["user_id"]
+    user = users_col.find_one({"user_id": user_id})
     
     if request.method == "POST":
         # Handle Profile Picture Upload
         if "profile_pic" in request.files:
             file = request.files["profile_pic"]
             if file.filename != "":
-                filename = secure_filename(f"profile_{user_email}_{file.filename}")
+                filename = secure_filename(f"profile_{user_id}_{file.filename}")
                 file.save(os.path.join(UPLOAD_FOLDER, filename))
                 
                 users_col.update_one(
-                    {"email": user_email},
-                    {"$set": {"profile_pic": filename}}
+                    {"user_id": user_id},
+                    {"$set": {"profile_picture": filename}}
                 )
-                log_activity(user_email, "Profile Picture Updated")
+                log_activity(user_id, "profile_picture_updated", action_category="profile")
                 return redirect(url_for("profile"))
 
     # Fetch Logs
-    logs = list(logs_col.find({"email": user_email}).sort("timestamp", -1))
+    logs = list(activity_logs_col.find({"user_id": user_id}).sort("timestamp", -1).limit(50))
     
     return render_template("profile.html", user=user, logs=logs)
 
 @app.route("/change_password", methods=["POST"])
 def change_password():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
         
-    user_email = session["user"]
-    user = users_col.find_one({"email": user_email})
+    user_id = session["user_id"]
+    user = users_col.find_one({"user_id": user_id})
     
     current_password = request.form["current_password"]
     new_password = request.form["new_password"]
     confirm_password = request.form["confirm_password"]
     
-    if not check_password_hash(user["password"], current_password):
-        return render_template("profile.html", user=user, logs=list(logs_col.find({"email": user_email}).sort("timestamp", -1)), error="Incorrect current password")
+    if not check_password_hash(user["password_hash"], current_password):
+        logs = list(activity_logs_col.find({"user_id": user_id}).sort("timestamp", -1).limit(50))
+        return render_template("profile.html", user=user, logs=logs, error="Incorrect current password")
         
     if new_password != confirm_password:
-        return render_template("profile.html", user=user, logs=list(logs_col.find({"email": user_email}).sort("timestamp", -1)), error="New passwords do not match")
+        logs = list(activity_logs_col.find({"user_id": user_id}).sort("timestamp", -1).limit(50))
+        return render_template("profile.html", user=user, logs=logs, error="New passwords do not match")
         
     users_col.update_one(
-        {"email": user_email},
-        {"$set": {"password": generate_password_hash(new_password)}}
+        {"user_id": user_id},
+        {"$set": {"password_hash": generate_password_hash(new_password)}}
     )
-    
-    log_activity(user_email, "Password Changed")
-    return render_template("profile.html", user=user, logs=list(logs_col.find({"email": user_email}).sort("timestamp", -1)), success="Password changed successfully")
+    log_activity(user_id, "password_changed", action_category="profile")
+    return redirect(url_for("profile"))
 
 @app.route("/delete_log/<log_id>")
 def delete_log(log_id):
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
         
-    # Ensure log belongs to user
-    logs_col.delete_one({
-        "_id": ObjectId(log_id), 
-        "email": session["user"]
-    })
-    
+    # Verify ownership before deleting
+    log = activity_logs_col.find_one({"_id": ObjectId(log_id), "user_id": session["user_id"]})
+    if log:
+        activity_logs_col.delete_one({"_id": ObjectId(log_id)})
+        
     return redirect(url_for("profile"))
 
 @app.route("/delete_account", methods=["POST"])
 def delete_account():
-    if "user" not in session:
+    if "user_id" not in session:
         return redirect(url_for("login"))
         
-    user_email = session["user"]
+    user_id = session["user_id"]
     
     # 1. Delete Files (Physical and DB)
-    user_files = files_col.find({"user": user_email})
+    user_files = files_col.find({"user_id": user_id})
     for f in user_files:
-        try:
-            os.remove(os.path.join(UPLOAD_FOLDER, f["stored_name"]))
-        except OSError:
-            pass # File might be missing
-    files_col.delete_many({"user": user_email})
+        if f.get("stored_name"):
+            try:
+                os.remove(os.path.join(UPLOAD_FOLDER, f["stored_name"]))
+            except OSError:
+                pass # File might be missing
+        if f.get("grid_fs_id"):
+            try:
+                fs.delete(f["grid_fs_id"])
+            except Exception:
+                pass
+                
+    files_col.delete_many({"user_id": user_id})
     
     # 2. Delete Logs
-    logs_col.delete_many({"email": user_email})
+    activity_logs_col.delete_many({"user_id": user_id})
     
     # 3. Delete User
-    users_col.delete_one({"email": user_email})
+    users_col.delete_one({"user_id": user_id})
     
     # 4. Logout
-    session.pop("user", None)
+    session.clear()
     
     return redirect(url_for("register"))
 if __name__ == "__main__":

@@ -21,9 +21,13 @@
                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3v-6"></path>
             </svg>
           </div>
-          <h1 class="text-xl font-semibold">SecureBox</h1>
+          <h1 class="text-xl font-semibold">SecureBoxini</h1>
         </div>
         <div class="flex items-center gap-4">
+          <a href="{{ url_for('recent') }}"
+            class="text-slate-400 hover:text-slate-50 text-sm font-medium transition-colors">
+            Recently Viewed
+          </a>
           <a href="{{ url_for('profile') }}"
             class="text-slate-400 hover:text-slate-50 text-sm font-medium transition-colors">
             Profile
@@ -96,6 +100,16 @@
             </div>
 
             <div class="flex items-center gap-2 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <a href="{{ url_for('preview_file', file_id=file._id) }}" target="_blank"
+                class="text-slate-400 hover:text-green-400 hover:bg-slate-800 p-2 rounded transition-colors"
+                title="Preview">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </a>
               <a href="{{ url_for('download', file_id=file._id) }}"
                 class="text-slate-400 hover:text-blue-400 hover:bg-slate-800 p-2 rounded transition-colors"
                 title="Download">
