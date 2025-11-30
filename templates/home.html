@@ -75,9 +75,9 @@
         </div>
         <div class="hidden md:flex items-center space-x-8">
             <a href="#about" class="text-slate-400 hover:text-white transition-colors font-medium">About</a>
-            <a href="{{ url_for('login') }}"
+            <a href="{{ url_for('auth.login') }}"
                 class="text-slate-400 hover:text-white transition-colors font-medium">Login</a>
-            <a href="{{ url_for('register') }}"
+            <a href="{{ url_for('auth.register') }}"
                 class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 shadow-lg shadow-cyan-500/20">Get
                 Started</a>
         </div>
@@ -102,11 +102,11 @@
             </p>
             <div
                 class="opacity-0 animate-[fadeUp_1s_ease_forwards_0.6s] flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="{{ url_for('register') }}"
+                <a href="{{ url_for('auth.register') }}"
                     class="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 shadow-lg shadow-cyan-500/25 hover:-translate-y-1">
                     Create Free Account
                 </a>
-                <a href="{{ url_for('login') }}"
+                <a href="{{ url_for('auth.login') }}"
                     class="inline-block bg-slate-800/50 text-white border border-slate-700 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-slate-800 transition-all duration-300 hover:-translate-y-1">
                     Login
                 </a>

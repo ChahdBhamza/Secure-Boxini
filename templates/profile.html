@@ -14,7 +14,7 @@
     <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
       <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <a href="{{ url_for('dashboard') }}"
+          <a href="{{ url_for('dashboard.dashboard') }}"
             class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center hover:opacity-90 transition-opacity">
             <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -24,9 +24,9 @@
           <h1 class="text-xl font-semibold">SecureBoxini</h1>
         </div>
         <div class="flex items-center gap-4">
-          <a href="{{ url_for('dashboard') }}"
+          <a href="{{ url_for('dashboard.dashboard') }}"
             class="text-slate-400 hover:text-slate-50 text-sm font-medium transition-colors">Dashboard</a>
-          <a href="{{ url_for('logout') }}"
+          <a href="{{ url_for('auth.logout') }}"
             class="text-slate-400 hover:text-slate-50 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium">Logout</a>
         </div>
       </div>
@@ -41,13 +41,14 @@
             <div class="relative group">
               {% if user.profile_picture and user.profile_picture != 'default.png' and 'ui-avatars.com' not in
               user.profile_picture and not user.profile_picture.startswith('http') %}
-              <img src="{{ url_for('uploaded_file', filename=user.profile_picture) }}" alt="Profile Picture"
+              <img src="{{ url_for('dashboard.uploaded_file', filename=user.profile_picture) }}" alt="Profile Picture"
                 class="w-32 h-32 rounded-2xl object-cover border border-slate-800 bg-slate-900" />
               {% else %}
-              <img src="{{ url_for('uploaded_file', filename='defaultprofilepic.png') }}" alt="Profile Picture"
-                class="w-32 h-32 rounded-2xl object-cover border border-slate-800 bg-slate-900" />
+              <img src="{{ url_for('dashboard.uploaded_file', filename='defaultprofilepic.png') }}"
+                alt="Profile Picture" class="w-32 h-32 rounded-2xl object-cover border border-slate-800 bg-slate-900" />
               {% endif %}
-              <form action="{{ url_for('profile') }}" method="POST" enctype="multipart/form-data" id="profile-pic-form">
+              <form action="{{ url_for('profile.profile') }}" method="POST" enctype="multipart/form-data"
+                id="profile-pic-form">
                 <label
                   class="absolute inset-0 rounded-2xl bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
                   <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -112,7 +113,7 @@
           </svg>
           Security
         </h3>
-        <form action="{{ url_for('change_password') }}" method="POST" class="max-w-md space-y-4">
+        <form action="{{ url_for('profile.change_password') }}" method="POST" class="max-w-md space-y-4">
           <div>
             <label class="block text-sm font-medium text-slate-400 mb-1">Current Password</label>
             <input type="password" name="current_password" required
@@ -190,7 +191,7 @@
                     {{ log.timestamp.strftime('%Y-%m-%d %H:%M') }}
                   </td>
                   <td class="px-6 py-4 text-right">
-                    <a href="{{ url_for('delete_log', log_id=log._id) }}"
+                    <a href="{{ url_for('profile.delete_log', log_id=log._id) }}"
                       class="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-800 rounded-lg inline-block"
                       title="Delete Log">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -77,7 +77,7 @@
                 </button>
 
                 <!-- Google Sign Up Button -->
-                <a href="{{ url_for('google_login') }}"
+                <a href="{{ url_for('auth.google_login') }}"
                     class="w-full mt-4 flex items-center justify-center bg-white text-slate-900 font-semibold py-3 rounded-lg transition duration-200 transform hover:scale-105 active:scale-95 hover:bg-slate-100">
                     <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24">
                         <path fill="#4285F4"
@@ -104,7 +104,7 @@
             </div>
 
             <!-- Login Link -->
-            <a href="/login"
+            <a href="{{ url_for('auth.login') }}"
                 class="block w-full text-center px-4 py-3 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 font-medium rounded-lg transition">
                 Sign In Instead
             </a>

@@ -23,7 +23,7 @@
             </div>
             {% endif %}
 
-            <form action="{{ url_for('resend_verification') }}" method="POST" class="space-y-6">
+            <form action="{{ url_for('auth.resend_verification') }}" method="POST" class="space-y-6">
                 <div>
                     <label class="block text-sm font-medium text-slate-400 mb-1.5">Email Address</label>
                     <div class="relative">
@@ -46,7 +46,8 @@
             </form>
 
             <div class="mt-6 text-center">
-                <a href="{{ url_for('login') }}" class="text-slate-500 hover:text-slate-400 transition text-sm">Back to
+                <a href="{{ url_for('auth.login') }}"
+                    class="text-slate-500 hover:text-slate-400 transition text-sm">Back to
                     Login</a>
             </div>
         </div>

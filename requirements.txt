@@ -6,3 +6,6 @@ requests
 Flask-Mail
 pyotp
 qrcode
+pycryptodome
+numpy
+Pillow

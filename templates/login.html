@@ -41,7 +41,7 @@
             </div>
             {% endif %}
 
-            <form action="{{ url_for('login') }}" method="POST" class="space-y-5">
+            <form action="{{ url_for('auth.login') }}" method="POST" class="space-y-5">
                 <!-- Username Input -->
                 <div>
                     <label class="block text-sm font-medium text-slate-300 mb-2">Email</label>
@@ -63,7 +63,8 @@
                             class="w-4 h-4 rounded border-slate-700 bg-slate-900/50 text-cyan-500 focus:ring-cyan-500 cursor-pointer">
                         <span class="ml-2 text-sm text-slate-400">Remember me</span>
                     </label>
-                    <a href="/forgot-password" class="text-sm text-cyan-400 hover:text-cyan-300">Forgot password?</a>
+                    <a href="{{ url_for('auth.forgot_password') }}"
+                        class="text-sm text-cyan-400 hover:text-cyan-300">Forgot password?</a>
                 </div>
 
                 <!-- Sign In Button -->
@@ -73,7 +74,7 @@
                 </button>
 
                 <!-- Google Sign In Button -->
-                <a href="{{ url_for('google_login') }}"
+                <a href="{{ url_for('auth.google_login') }}"
                     class="w-full mt-4 flex items-center justify-center bg-white text-slate-900 font-semibold py-3 rounded-lg transition duration-200 transform hover:scale-105 active:scale-95 hover:bg-slate-100">
                     <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24">
                         <path fill="#4285F4"
@@ -100,7 +101,7 @@
             </div>
 
             <!-- Register Link -->
-            <a href="/register"
+            <a href="{{ url_for('auth.register') }}"
                 class="block w-full text-center px-4 py-3 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 font-medium rounded-lg transition">
                 Create Account
             </a>

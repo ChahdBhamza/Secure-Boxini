@@ -14,7 +14,7 @@
     <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
       <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <a href="{{ url_for('dashboard') }}"
+          <a href="{{ url_for('dashboard.dashboard') }}"
             class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center hover:opacity-90 transition-opacity">
             <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -24,10 +24,11 @@
           <h1 class="text-xl font-semibold">SecureBox</h1>
         </div>
         <div class="flex items-center gap-4 text-sm font-medium">
-          <a href="{{ url_for('dashboard') }}"
+          <a href="{{ url_for('dashboard.dashboard') }}"
             class="text-slate-400 hover:text-slate-50 transition-colors">Dashboard</a>
-          <a href="{{ url_for('profile') }}" class="text-slate-400 hover:text-slate-50 transition-colors">Profile</a>
-          <a href="{{ url_for('logout') }}"
+          <a href="{{ url_for('profile.profile') }}"
+            class="text-slate-400 hover:text-slate-50 transition-colors">Profile</a>
+          <a href="{{ url_for('auth.logout') }}"
             class="text-slate-400 hover:text-red-400 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
             Logout
           </a>
@@ -51,7 +52,7 @@
           </div>
           <div class="flex items-center gap-3">
             {% if preview_type %}
-            <a href="{{ url_for('download', file_id=file._id) }}"
+            <a href="{{ url_for('dashboard.download', file_id=file._id) }}"
               class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:from-blue-500 hover:to-cyan-400 transition-colors">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -60,7 +61,7 @@
               Download
             </a>
             {% endif %}
-            <a href="{{ url_for('recent') }}"
+            <a href="{{ url_for('dashboard.recent') }}"
               class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl text-sm font-medium text-slate-300 hover:text-white transition-all hover:border-slate-600">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18">
@@ -84,7 +85,8 @@
           </div>
           {% elif preview_type == 'pdf' %}
           <div class="w-full h-[70vh] border border-slate-800 rounded-xl overflow-hidden">
-            <iframe src="{{ url_for('preview_file_content', file_id=file._id) }}" class="w-full h-full" frameborder="0">
+            <iframe src="{{ url_for('dashboard.preview_file_content', file_id=file._id) }}" class="w-full h-full"
+              frameborder="0">
             </iframe>
           </div>
           {% else %}
@@ -96,7 +98,7 @@
             </svg>
             <h3 class="text-lg font-semibold text-white mb-2">Preview not available</h3>
             <p class="text-slate-400 mb-6">This file type cannot be previewed in the browser.</p>
-            <a href="{{ url_for('download', file_id=file._id) }}"
+            <a href="{{ url_for('dashboard.download', file_id=file._id) }}"
               class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors">
               Download to view
             </a>

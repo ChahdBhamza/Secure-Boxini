@@ -23,12 +23,13 @@
             <p class="text-slate-400 mb-6">
                 The verification link is invalid or has expired.
             </p>
-            <a href="{{ url_for('resend_verification') }}"
+            <a href="{{ url_for('auth.resend_verification') }}"
                 class="inline-block w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold py-3 px-6 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg shadow-blue-500/20">
                 Resend Verification Link
             </a>
             <div class="mt-6">
-                <a href="{{ url_for('login') }}" class="text-slate-500 hover:text-slate-400 transition text-sm">Back to
+                <a href="{{ url_for('auth.login') }}"
+                    class="text-slate-500 hover:text-slate-400 transition text-sm">Back to
                     Login</a>
             </div>
         </div>

@@ -34,11 +34,11 @@
             SecureBoxini</h1>
         </div>
         <nav class="flex items-center gap-6">
-          <a href="{{ url_for('dashboard') }}"
+          <a href="{{ url_for('dashboard.dashboard') }}"
             class="text-sm text-slate-400 hover:text-white transition-colors font-medium">Dashboard</a>
-          <a href="{{ url_for('profile') }}"
+          <a href="{{ url_for('profile.profile') }}"
             class="text-sm text-slate-400 hover:text-white transition-colors font-medium">Profile</a>
-          <a href="{{ url_for('logout') }}"
+          <a href="{{ url_for('auth.logout') }}"
             class="text-sm text-slate-400 hover:text-red-400 px-4 py-2 rounded-lg hover:bg-slate-800/50 transition-all font-medium">
             Logout
           </a>
@@ -65,7 +65,7 @@
           </div>
           <p class="text-slate-400 text-lg ml-15">Your recent file activity at a glance</p>
         </div>
-        <a href="{{ url_for('dashboard') }}"
+        <a href="{{ url_for('dashboard.dashboard') }}"
           class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl text-sm font-medium text-slate-300 hover:text-white transition-all">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18">
@@ -125,7 +125,7 @@
         </div>
 
         <!-- Action Button -->
-        <a href="{{ url_for('preview_file', file_id=file._id) }}"
+        <a href="{{ url_for('dashboard.preview_file', file_id=file._id) }}"
           class="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-[1.02]">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z">
@@ -151,7 +151,7 @@
           <h3 class="text-2xl font-bold text-white mb-3">No Recent Activity</h3>
           <p class="text-slate-400 mb-8 max-w-md mx-auto">Start viewing, downloading, or previewing files to see them
             appear here.</p>
-          <a href="{{ url_for('dashboard') }}"
+          <a href="{{ url_for('dashboard.dashboard') }}"
             class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30">
             Go to Dashboard
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

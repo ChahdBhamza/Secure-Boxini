@@ -44,7 +44,7 @@
                     {% endif %}
 
                     <!-- Verification Form -->
-                    <form action="{{ url_for('verify_2fa_login') }}" method="POST" class="space-y-6">
+                    <form action="{{ url_for('auth.verify_2fa_login') }}" method="POST" class="space-y-6">
                         <div>
                             <label class="block text-sm font-medium text-slate-300 mb-2">Verification Code</label>
                             <input type="text" name="code" placeholder="Enter 6-digit code" required autofocus
