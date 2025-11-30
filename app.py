@@ -9,7 +9,7 @@ from pymongo import MongoClient
 from gridfs import GridFS
 from bson.objectid import ObjectId
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import string
 from authlib.integrations.flask_client import OAuth
@@ -36,6 +36,7 @@ app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_NAME'] = 'securebox_session'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=2)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -213,6 +214,7 @@ def login():
                 # Force Setup - store user_id and email in session
                 session["user_id"] = user["user_id"]
                 session["email"] = user["email"]
+                session.permanent = True
                 return redirect(url_for("enable_2fa"))
 
         return render_template("login.html", error="Invalid username or password")
@@ -238,6 +240,7 @@ def verify_2fa_login():
         if totp.verify(code):
             session["user_id"] = session["pre_2fa_user_id"]
             session["email"] = session["pre_2fa_email"]
+            session.permanent = True
             session.pop("pre_2fa_user_id", None)
             session.pop("pre_2fa_email", None)
             log_activity(session["user_id"], "user_login", {"2fa": True}, action_category="auth")
@@ -295,6 +298,7 @@ def verify_2fa_setup():
             {"user_id": session["user_id"]},
             {"$set": {"is_2fa_enabled": True}}
         )
+        session.permanent = True
         log_activity(session["user_id"], "2fa_enabled", action_category="auth")
         return redirect(url_for("dashboard"))
     else:
@@ -324,6 +328,7 @@ def verify_email(token):
         # Auto-login the user with user_id
         session["user_id"] = user["user_id"]
         session["email"] = user["email"]
+        session.permanent = True
         log_activity(user["user_id"], "email_verified", action_category="auth")
         return redirect(url_for("dashboard"))
     else:
@@ -410,6 +415,7 @@ def google_callback():
         users_col.insert_one(new_user)
         session["user_id"] = user_id
         session["email"] = email
+        session.permanent = True
         log_activity(user_id, "user_registered_google", action_category="auth")
     else:
         # User exists - check if they registered with email/password
@@ -430,6 +436,7 @@ def google_callback():
         )
         session["user_id"] = user.get("user_id") or str(user["_id"])
         session["email"] = user.get("email") or email
+        session.permanent = True
     
     log_activity(session["user_id"], "user_login_google", action_category="auth")
     return redirect(url_for("dashboard"))
