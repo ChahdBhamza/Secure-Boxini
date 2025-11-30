@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file, flash
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -67,7 +67,11 @@ db = client.SecureBoxinii  # Using new database with user_id structure
 users_col = db.users
 files_col = db.files
 folders_col = db.folders
+folder_permissions_col = db.folder_permissions  # Add folder permissions collection
 activity_logs_col = db.activity_logs
+
+# Import RBAC module
+import rbac
 password_reset_tokens_col = db.password_reset_tokens
 reset_codes_col = db.reset_codes
 fs = GridFS(db)
@@ -141,6 +145,10 @@ def register():
         # Create new user with user_id
         user_id = str(uuid.uuid4())
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+        
+        # Check if this is the first user (make them global admin)
+        is_first_user = users_col.count_documents({}) == 0
+        
         users_col.insert_one({
             "user_id": user_id,
             "username": username,
@@ -150,6 +158,7 @@ def register():
             "created_at": datetime.utcnow(),
             "is_verified": False,
             "is_2fa_enabled": False,
+            "is_global_admin": is_first_user,  # First user becomes global admin
             "status": "active",
             "verification_token": token,
             "profile_picture": None,
@@ -450,14 +459,18 @@ def dashboard():
 
     current_folder_id = request.args.get("folder_id")
     
-    # Verify folder ownership if folder_id is provided
+    # Verify folder access if folder_id is provided
     current_folder = None
     breadcrumbs = []
     
     if current_folder_id:
-        current_folder = folders_col.find_one({"folder_id": current_folder_id, "user_id": session["user_id"]})
+        # Check if user has access to this folder
+        if not rbac.can_access_folder(session["user_id"], current_folder_id):
+            return redirect(url_for("dashboard")) # No access to this folder
+            
+        current_folder = folders_col.find_one({"folder_id": current_folder_id})
         if not current_folder:
-            return redirect(url_for("dashboard")) # Invalid folder or not owned by user
+            return redirect(url_for("dashboard")) # Folder not found
             
         # Build breadcrumbs
         temp_folder = current_folder
@@ -474,6 +487,9 @@ def dashboard():
             folder_name = request.form.get("folder_name")
             if folder_name:
                 folder_id = str(uuid.uuid4())
+                permission_id = str(uuid.uuid4())
+                
+                # Create folder
                 folders_col.insert_one({
                     "folder_id": folder_id,
                     "user_id": session["user_id"],
@@ -481,12 +497,35 @@ def dashboard():
                     "parent_id": current_folder_id, # Can be None
                     "created_at": datetime.utcnow()
                 })
+                
+                # Automatically assign creator as folder admin
+                folder_permissions_col.insert_one({
+                    "permission_id": permission_id,
+                    "folder_id": folder_id,
+                    "user_id": session["user_id"],
+                    "role": "admin",
+                    "granted_by": session["user_id"],
+                    "granted_at": datetime.utcnow()
+                })
+                
                 log_activity(session["user_id"], "folder_created", {"name": folder_name}, action_category="folder")
                 return redirect(url_for("dashboard", folder_id=current_folder_id))
 
         # File upload request
         file = request.files.get("file")
         if file and file.filename != "":
+            # Check if user has permission to upload to this folder
+            can_upload = False
+            if current_folder_id:
+                # Check folder permission
+                can_upload = rbac.has_folder_permission(session["user_id"], current_folder_id, "upload")
+            else:
+                # In root, user can always upload their own files
+                can_upload = True
+            
+            if not can_upload:
+                flash("You don't have permission to upload files to this folder.", "error")
+                return redirect(url_for("dashboard", folder_id=current_folder_id))
             filename = secure_filename(file.filename)
             file_bytes = file.read()
             file_size = len(file_bytes)
@@ -600,26 +639,34 @@ def dashboard():
             log_activity(session["user_id"], "file_uploaded", {"filename": filename}, action_category="file")
             return redirect(url_for("dashboard", folder_id=current_folder_id))
 
-    # Fetch folders in current directory
-    folders = list(folders_col.find({
-        "user_id": session["user_id"], 
-        "parent_id": current_folder_id
-    }).sort("name", 1))
+    # Fetch folders user has access to in current directory
+    all_user_folders = rbac.get_user_folders(session["user_id"])
+    
+    # Filter to only show folders in current directory
+    folders = [f for f in all_user_folders if f.get("parent_id") == current_folder_id]
+    folders.sort(key=lambda x: x.get("name", ""))
 
     # Fetch files in current directory
-    # Note: We need to handle legacy files that don't have folder_id (treat as root)
+    # If viewing a folder, show all files in that folder (user has access verified above)
+    # If viewing root, show only user's own files
     file_query = {
-        "user_id": session["user_id"], 
         "status": "active"
     }
     
     if current_folder_id:
+        # In a folder: show all files in this folder (members can see all files uploaded by anyone)
         file_query["folder_id"] = current_folder_id
     else:
-        # For root, get files where folder_id is None OR folder_id doesn't exist
-        file_query["$or"] = [
-            {"folder_id": None},
-            {"folder_id": {"$exists": False}}
+        # In root: show only user's own files (no folder_id)
+        # For root, get files where folder_id is None OR folder_id doesn't exist AND user_id matches
+        file_query["$and"] = [
+            {"user_id": session["user_id"]},
+            {
+                "$or": [
+                    {"folder_id": None},
+                    {"folder_id": {"$exists": False}}
+                ]
+            }
         ]
 
     user_files = list(files_col.find(file_query).sort("upload_time", -1))
@@ -643,8 +690,30 @@ def dashboard():
             f["display_time"] = f["upload_time"].strftime("%Y-%m-%d %H:%M")
         else:
             f["display_time"] = "Unknown"
+        
+        # Check if user can delete this file
+        f["can_delete"] = rbac.can_delete_file(session["user_id"], f)
 
-    return render_template("dashboard.html", files=user_files, folders=folders, current_folder=current_folder, breadcrumbs=breadcrumbs)
+    # Check if user can manage current folder
+    can_manage_current_folder = False
+    if current_folder:
+        can_manage_current_folder = rbac.can_manage_folder(session["user_id"], current_folder["folder_id"])
+    
+    # Check if user can upload to current folder
+    can_upload = False
+    if current_folder_id:
+        can_upload = rbac.has_folder_permission(session["user_id"], current_folder_id, "upload")
+    else:
+        # In root, user can always upload their own files
+        can_upload = True
+
+    return render_template("dashboard.html", 
+                         files=user_files, 
+                         folders=folders, 
+                         current_folder=current_folder, 
+                         breadcrumbs=breadcrumbs,
+                         can_manage_current_folder=can_manage_current_folder,
+                         can_upload=can_upload)
 
 @app.route("/delete-folder/<folder_id>")
 def delete_folder(folder_id):
@@ -680,6 +749,172 @@ def delete_folder(folder_id):
     
     # Redirect to parent folder if exists, else root
     return redirect(url_for("dashboard", folder_id=folder.get("parent_id")))
+
+# ------------------- Folder Member Management Routes -------------------
+
+@app.route("/folder/<folder_id>/members")
+def folder_members(folder_id):
+    """View and manage folder members"""
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    
+    # Check if user can manage this folder
+    print(f"DEBUG: Checking permission for User {session.get('user_id')} on Folder {folder_id}")
+    role = rbac.get_folder_role(session["user_id"], folder_id)
+    print(f"DEBUG: Calculated Role: {role}")
+    
+    if not rbac.can_manage_folder(session["user_id"], folder_id):
+        print("DEBUG: Access Denied")
+        return "Forbidden: You don't have permission to manage this folder", 403
+    
+    # Get folder info
+    folder = folders_col.find_one({"folder_id": folder_id})
+    if not folder:
+        return "Folder not found", 404
+    
+    # Get all permissions for this folder
+    permissions = list(folder_permissions_col.find({"folder_id": folder_id}))
+    
+    # Get user details for each permission
+    members = []
+    for perm in permissions:
+        user = users_col.find_one({"user_id": perm["user_id"]})
+        if user:
+            members.append({
+                "user_id": user["user_id"],
+                "username": user["username"],
+                "email": user["email"],
+                "role": perm["role"],
+                "granted_at": perm["granted_at"]
+            })
+    
+    # Get all users for adding new members
+    all_users = list(users_col.find({}, {"user_id": 1, "username": 1, "email": 1}))
+    
+    return render_template("folder_members.html", 
+                         folder=folder, 
+                         members=members, 
+                         all_users=all_users)
+
+
+@app.route("/folder/<folder_id>/members/add", methods=["POST"])
+def add_folder_member(folder_id):
+    """Add a user to a folder with a specific role"""
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    
+    # Check if user can manage this folder
+    if not rbac.can_manage_folder(session["user_id"], folder_id):
+        return "Forbidden: You don't have permission to manage this folder", 403
+    
+    user_id_to_add = request.form.get("user_id")
+    role = request.form.get("role")
+    
+    if not user_id_to_add or not role:
+        return "Missing user_id or role", 400
+    
+    if role not in ["admin", "member", "viewer"]:
+        return "Invalid role", 400
+    
+    # Check if user already has permission
+    existing = folder_permissions_col.find_one({
+        "folder_id": folder_id,
+        "user_id": user_id_to_add
+    })
+    
+    if existing:
+        flash(f"User already has access to this folder as {existing['role']}", "warning")
+        return redirect(url_for("folder_members", folder_id=folder_id))
+    
+    # Add permission
+    folder_permissions_col.insert_one({
+        "permission_id": str(uuid.uuid4()),
+        "folder_id": folder_id,
+        "user_id": user_id_to_add,
+        "role": role,
+        "granted_by": session["user_id"],
+        "granted_at": datetime.utcnow()
+    })
+    
+    flash(f"User added successfully as {role}", "success")
+    log_activity(session["user_id"], "folder_member_added", 
+                {"folder_id": folder_id, "added_user": user_id_to_add, "role": role}, 
+                action_category="folder")
+    
+    return redirect(url_for("folder_members", folder_id=folder_id))
+
+
+@app.route("/folder/<folder_id>/members/<user_id>/role", methods=["POST"])
+def change_folder_member_role(folder_id, user_id):
+    """Change a user's role in a folder"""
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    
+    # Check if user can manage this folder
+    if not rbac.can_manage_folder(session["user_id"], folder_id):
+        return "Forbidden: You don't have permission to manage this folder", 403
+    
+    new_role = request.form.get("role")
+    
+    if not new_role or new_role not in ["admin", "member", "viewer"]:
+        flash("Invalid role specified.", "danger")
+        return redirect(url_for("folder_members", folder_id=folder_id))
+    
+    # Update role
+    result = folder_permissions_col.update_one(
+        {"folder_id": folder_id, "user_id": user_id},
+        {"$set": {"role": new_role}}
+    )
+    
+    if result.modified_count == 0:
+        flash("User not found in folder or role is already the same.", "warning")
+        return redirect(url_for("folder_members", folder_id=folder_id))
+    
+    flash(f"User role updated to {new_role}", "success")
+    log_activity(session["user_id"], "folder_member_role_changed", 
+                {"folder_id": folder_id, "user_id": user_id, "new_role": new_role}, 
+                action_category="folder")
+    
+    return redirect(url_for("folder_members", folder_id=folder_id))
+
+
+@app.route("/folder/<folder_id>/members/<user_id>/remove", methods=["POST"])
+def remove_folder_member(folder_id, user_id):
+    """Remove a user from a folder"""
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    
+    # Check if user can manage this folder
+    if not rbac.can_manage_folder(session["user_id"], folder_id):
+        return "Forbidden: You don't have permission to manage this folder", 403
+    
+    # Don't allow removing yourself if you're the only admin
+    if user_id == session["user_id"]:
+        admin_count = folder_permissions_col.count_documents({
+            "folder_id": folder_id,
+            "role": "admin"
+        })
+        if admin_count <= 1:
+            flash("Cannot remove yourself - you're the only admin for this folder.", "danger")
+            return redirect(url_for("folder_members", folder_id=folder_id))
+    
+    # Remove permission
+    result = folder_permissions_col.delete_one({
+        "folder_id": folder_id,
+        "user_id": user_id
+    })
+    
+    if result.deleted_count == 0:
+        flash("User not found in folder or already removed.", "warning")
+        return redirect(url_for("folder_members", folder_id=folder_id))
+    
+    flash("User removed from folder successfully.", "success")
+    log_activity(session["user_id"], "folder_member_removed", 
+                {"folder_id": folder_id, "removed_user": user_id}, 
+                action_category="folder")
+    
+    return redirect(url_for("folder_members", folder_id=folder_id))
+
 
 # ------------------- Serve Uploaded File -------------------
 @app.route('/uploads/<filename>')
@@ -1005,12 +1240,16 @@ def delete_file(file_id):
         return redirect(url_for("login"))
 
     try:
-        file_doc = files_col.find_one({"_id": ObjectId(file_id), "user_id": session["user_id"]})
+        file_doc = files_col.find_one({"_id": ObjectId(file_id)})
     except:
         return "Invalid file ID"
         
     if not file_doc:
-        return "File not found or not authorized"
+        return "File not found"
+    
+    # Check if user has permission to delete this file
+    if not rbac.can_delete_file(session["user_id"], file_doc):
+        return "Not authorized to delete this file", 403
 
     # Remove from GridFS if present, otherwise fall back to disk
     grid_id = file_doc.get("grid_fs_id") or file_doc.get("grid_id")

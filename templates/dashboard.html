@@ -86,6 +86,19 @@
             </svg>
             New Folder
           </button>
+
+          <!-- Manage Members Button (only shown when inside a folder and user has permission) -->
+          {% if current_folder and can_manage_current_folder %}
+          <a href="{{ url_for('folder_members', folder_id=current_folder.folder_id) }}"
+            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
+              </path>
+            </svg>
+            Manage Members
+          </a>
+          {% endif %}
         </div>
       </div>
 
@@ -114,6 +127,7 @@
       </div>
 
       <!-- Upload Section -->
+      {% if can_upload %}
       <div class="mb-8">
         <div class="border border-slate-800 bg-slate-900/50 p-8 rounded-lg relative overflow-hidden group">
           <div
@@ -140,6 +154,7 @@
           </form>
         </div>
       </div>
+      {% endif %}
 
       <!-- Folders Grid -->
       {% if folders %}
@@ -161,7 +176,7 @@
                 </div>
               </div>
             </a>
-            <!-- Delete Folder Button (Absolute positioned) -->
+            <!-- Delete Folder Button -->
             <a href="{{ url_for('delete_folder', folder_id=folder.folder_id) }}"
               onclick="return confirm('Delete folder {{ folder.name }} and all its contents?')"
               class="absolute top-2 right-2 p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded">
@@ -228,6 +243,7 @@
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
               </a>
+              {% if file.can_delete %}
               <a href="{{ url_for('delete_file', file_id=file._id) }}"
                 onclick="return confirm('Are you sure you want to delete this file?')"
                 class="text-slate-400 hover:text-red-400 hover:bg-slate-800 p-2 rounded transition-colors"
@@ -238,6 +254,7 @@
                   </path>
                 </svg>
               </a>
+              {% endif %}
             </div>
           </div>
           {% else %}

@@ -59,6 +59,10 @@ try:
                 "is_2fa_enabled": {
                     "bsonType": "bool"
                 },
+                "is_global_admin": {
+                    "bsonType": "bool",
+                    "description": "Global admin can manage all folders and users"
+                },
                 "status": {
                     "enum": ["active", "suspended", "deleted"],
                     "description": "User status"
@@ -453,6 +457,72 @@ except OperationFailure:
 try:
     db.encryption_keys.create_index([("user_id", ASCENDING), ("key_purpose", ASCENDING), ("is_active", ASCENDING)], name="user_purpose_active")
     print("   ✅ Index: user_id + key_purpose + is_active")
+except OperationFailure:
+    print("   ⚠️  Index already exists")
+
+
+# ============================================================
+#   9. FOLDER_PERMISSIONS COLLECTION (NEW)
+# ============================================================
+print("\n🔐 Creating 'folder_permissions' collection...")
+
+try:
+    db.create_collection("folder_permissions", validator={
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": ["permission_id", "folder_id", "user_id", "role", "granted_at"],
+            "properties": {
+                "permission_id": {
+                    "bsonType": "string"
+                },
+                "folder_id": {
+                    "bsonType": "string",
+                    "description": "Reference to folders.folder_id"
+                },
+                "user_id": {
+                    "bsonType": "string",
+                    "description": "Reference to users.user_id"
+                },
+                "role": {
+                    "enum": ["admin", "member", "viewer"],
+                    "description": "User's role in this folder"
+                },
+                "granted_by": {
+                    "bsonType": "string",
+                    "description": "User ID who granted this permission"
+                },
+                "granted_at": {
+                    "bsonType": "date"
+                }
+            }
+        }
+    })
+    print("   ✅ Collection created with validation")
+except CollectionInvalid:
+    print("   ⚠️  Collection already exists, skipping creation")
+
+# Create indexes
+try:
+    db.folder_permissions.create_index([("permission_id", ASCENDING)], unique=True, name="permission_id_unique")
+    print("   ✅ Index: permission_id (unique)")
+except OperationFailure:
+    print("   ⚠️  Index already exists")
+
+try:
+    db.folder_permissions.create_index([("folder_id", ASCENDING), ("user_id", ASCENDING)], unique=True, name="folder_user_unique")
+    print("   ✅ Index: folder_id + user_id (unique - one role per user per folder)")
+except OperationFailure:
+    print("   ⚠️  Index already exists")
+
+try:
+    db.folder_permissions.create_index([("user_id", ASCENDING)], name="user_id")
+    print("   ✅ Index: user_id (for listing user's accessible folders)")
+except OperationFailure:
+    print("   ⚠️  Index already exists")
+
+try:
+    db.folder_permissions.create_index([("folder_id", ASCENDING)], name="folder_id")
+    print("   ✅ Index: folder_id (for listing folder members)")
 except OperationFailure:
     print("   ⚠️  Index already exists")
 
