@@ -1,6 +1,10 @@
 from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file
-from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from werkzeug.utils import secure_filename
+from hashpasswordfinal import hash_password, verify_password
 from pymongo import MongoClient
 from gridfs import GridFS
 from bson.objectid import ObjectId
@@ -16,6 +20,10 @@ import qrcode
 import io
 import base64
 from session_interface import MongoSessionInterface
+from imageaes import encrypt_image, decrypt_image, is_image_file
+from aessfile import encrypt_file, decrypt_file, generate_key
+from vigenere import vigenere_encrypt, vigenere_decrypt
+import json
 
 load_dotenv()
 
@@ -114,7 +122,7 @@ def register():
             "username": username,
             "email": email,
             "email_normalized": email,
-            "password_hash": generate_password_hash(password),
+            "password_hash": hash_password(password),
             "created_at": datetime.utcnow(),
             "is_verified": False,
             "is_2fa_enabled": False,
@@ -155,7 +163,7 @@ def login():
             return render_template("login.html", error="User not found")
 
         # Verify password (using password_hash field)
-        if user and check_password_hash(user["password_hash"], password):
+        if user and verify_password(password, user["password_hash"]):
             # Check if verified
             if user.get("is_verified") is False:
                  return render_template("login.html", error="Please verify your email first.")
@@ -359,7 +367,7 @@ def google_callback():
             "username": user_info.get('name', email.split('@')[0]),
             "email": email,
             "email_normalized": email,
-            "password_hash": generate_password_hash(random_password),
+            "password_hash": hash_password(random_password),
             "created_at": datetime.utcnow(),
             "is_verified": True, # Google users are verified
             "is_2fa_enabled": False,
@@ -409,29 +417,121 @@ def dashboard():
         filename = secure_filename(file.filename)
         file_bytes = file.read()
         file_size = len(file_bytes)
+        mime_type = file.content_type or "application/octet-stream"
+        
+        # Check if file is an image
+        is_image = is_image_file(mime_type, filename)
+        is_encrypted = False
+        encryption_key = None
+        encryption_metadata = None
+        encryption_type = None
+        
+        # Encrypt files before storing
+        if is_image:
+            # Encrypt images with AES-EAX
+            try:
+                ciphertext, key, metadata = encrypt_image(file_bytes)
+                
+                # Store encrypted data as JSON in GridFS
+                encrypted_package = {
+                    "ciphertext": ciphertext.hex(),  # Convert bytes to hex for JSON
+                    "metadata": metadata
+                }
+                encrypted_json = json.dumps(encrypted_package)
+                
+                grid_id = fs.put(
+                    encrypted_json.encode('utf-8'),
+                    filename=f"{filename}.encrypted",
+                    content_type="application/json"
+                )
+                
+                # Store encryption key and metadata
+                encryption_key = key.hex()  # Store as hex string
+                encryption_metadata = metadata
+                encryption_type = "aes-eax"
+                is_encrypted = True
+                
+                # Update file size to reflect encrypted size
+                file_size = len(encrypted_json)
+                
+            except Exception as e:
+                print(f"Error encrypting image: {e}")
+                # Fall back to unencrypted storage
+                grid_id = fs.put(
+                    file_bytes,
+                    filename=filename,
+                    content_type=mime_type
+                )
+        else:
+            # Encrypt non-image files with AES-GCM
+            try:
+                encrypted_payload, key_b64 = encrypt_file(file_bytes)
+                
+                # Store encrypted payload as JSON in GridFS
+                encrypted_json = json.dumps(encrypted_payload.as_dict())
+                
+                grid_id = fs.put(
+                    encrypted_json.encode('utf-8'),
+                    filename=f"{filename}.encrypted",
+                    content_type="application/json"
+                )
+                
+                # Store encryption key and metadata
+                encryption_key = key_b64  # Store as base64 string
+                encryption_metadata = encrypted_payload.as_dict()
+                encryption_type = "aes-gcm"
+                is_encrypted = True
+                
+                # Update file size to reflect encrypted size
+                file_size = len(encrypted_json)
+                
+            except Exception as e:
+                print(f"Error encrypting file: {e}")
+                # Fall back to unencrypted storage
+                grid_id = fs.put(
+                    file_bytes,
+                    filename=filename,
+                    content_type=mime_type
+                )
 
-        grid_id = fs.put(
-            file_bytes,
-            filename=filename,
-            content_type=file.content_type
-        )
+        # Add encryption data if encrypted
+        if is_encrypted:
+            # Encrypt the file key with master key (Key Wrapping)
+            # We use the file_doc["file_id"] as AAD, so we need to generate it first
+            # But file_doc is created below. Let's use the uuid we generated.
+            # Wait, file_doc is created below. Let's move file_id generation up.
+            pass
 
-        # Create file document with new structure
-        files_col.insert_one({
-            "file_id": str(uuid.uuid4()),
+        # Create file document with encryption info
+        file_id = str(uuid.uuid4())
+        
+        file_doc_key = None
+
+        # Encrypt filename with Vigenere
+        encrypted_filename = vigenere_encrypt(filename, "SECUREBOX")
+
+        file_doc = {
+            "file_id": file_id,
             "user_id": session["user_id"],
-            "filename": filename,
-            "original_filename": filename,
+            "filename": encrypted_filename,  # Store encrypted filename
+            "original_filename": filename,   # Keep original for reference (optional, maybe encrypt this too?)
             "grid_fs_id": grid_id,
             "size": file_size,
-            "mime_type": file.content_type or "application/octet-stream",
+            "mime_type": mime_type,
             "upload_time": datetime.utcnow(),
             "last_modified": datetime.utcnow(),
             "download_count": 0,
             "status": "active",
-            "is_encrypted": False,
+            "is_encrypted": is_encrypted,
             "tags": []
-        })
+        }
+        
+        if is_encrypted:
+            file_doc["encryption_key"] = encryption_key
+            file_doc["encryption_metadata"] = encryption_metadata
+            file_doc["encryption_type"] = encryption_type
+        
+        files_col.insert_one(file_doc)
         
         log_activity(session["user_id"], "file_uploaded", {"filename": filename}, action_category="file")
 
@@ -439,6 +539,9 @@ def dashboard():
     
     # Format files for display
     for f in user_files:
+        # Decrypt filename for display
+        if "filename" in f:
+            f["filename"] = vigenere_decrypt(f["filename"], "SECUREBOX")
         # Format size
         size_bytes = f.get("size", 0)
         if size_bytes < 1024:
@@ -485,15 +588,56 @@ def download(file_id):
     if grid_id:
         try:
             grid_file = fs.get(grid_id)
+            file_data = grid_file.read()
+            
+            # Check if file is encrypted
+            if file_doc.get("is_encrypted"):
+                encryption_type = file_doc.get("encryption_type", "aes-eax")  # Default to aes-eax for backward compatibility
+                
+                try:
+                    if encryption_type == "aes-eax":
+                        # Decrypt image with AES-EAX
+                        encrypted_package = json.loads(file_data.decode('utf-8'))
+                        ciphertext = bytes.fromhex(encrypted_package["ciphertext"])
+                        metadata = encrypted_package["metadata"]
+                        key = bytes.fromhex(file_doc["encryption_key"])
+                        
+                        # Decrypt and get PNG bytes
+                        decrypted_bytes = decrypt_image(ciphertext, key, metadata)
+                        
+                        return send_file(
+                            io.BytesIO(decrypted_bytes),
+                            as_attachment=True,
+                            download_name=download_filename,
+                            mimetype="image/png"  # Decrypted images are PNG
+                        )
+                    elif encryption_type == "aes-gcm":
+                        # Decrypt file with AES-GCM
+                        encrypted_payload = json.loads(file_data.decode('utf-8'))
+                        key_b64 = file_doc["encryption_key"]
+                        
+                       # Decrypt file
+                        decrypted_bytes = decrypt_file(encrypted_payload, key_b64)
+                        
+                        return send_file(
+                            io.BytesIO(decrypted_bytes),
+                            as_attachment=True,
+                            download_name=download_filename,
+                            mimetype=file_doc.get("mime_type", "application/octet-stream")
+                        )
+                except Exception as e:
+                    print(f"Error decrypting file: {e}")
+                    return "Error decrypting file", 500
+            else:
+                # Serve unencrypted file normally
+                return send_file(
+                    io.BytesIO(file_data),
+                    as_attachment=True,
+                    download_name=file_doc["filename"],
+                    mimetype=getattr(grid_file, "content_type", "application/octet-stream")
+                )
         except Exception:
             return "Stored file data not found"
-
-        return send_file(
-            io.BytesIO(grid_file.read()),
-            as_attachment=True,
-            download_name=file_doc["filename"],
-            mimetype=getattr(grid_file, "content_type", "application/octet-stream")
-        )
 
     # Legacy fallback to disk files
     stored_name = file_doc.get("stored_name")
@@ -527,6 +671,10 @@ def preview_file(file_id):
     if not file_doc:
         return "File not found or not authorized"
 
+    # Decrypt filename for display
+    if "filename" in file_doc:
+        file_doc["filename"] = vigenere_decrypt(file_doc["filename"], "SECUREBOX")
+
     # Get file content
     file_content = None
     grid_id = file_doc.get("grid_fs_id") or file_doc.get("grid_id")
@@ -535,6 +683,32 @@ def preview_file(file_id):
         try:
             grid_file = fs.get(grid_id)
             file_content = grid_file.read()
+            
+            # Decrypt if encrypted
+            if file_doc.get("is_encrypted"):
+                encryption_type = file_doc.get("encryption_type", "aes-eax")
+                
+                try:
+                    if encryption_type == "aes-eax":
+                        # Decrypt image with AES-EAX
+                        encrypted_package = json.loads(file_content.decode('utf-8'))
+                        ciphertext = bytes.fromhex(encrypted_package["ciphertext"])
+                        metadata = encrypted_package["metadata"]
+                        key = bytes.fromhex(file_doc["encryption_key"])
+                        
+                        # Decrypt to get image bytes
+                        file_content = decrypt_image(ciphertext, key, metadata)
+                    elif encryption_type == "aes-gcm":
+                        # Decrypt file with AES-GCM
+                        encrypted_payload = json.loads(file_content.decode('utf-8'))
+                        key_b64 = file_doc["encryption_key"]
+                        
+                        # Decrypt file
+                        file_content = decrypt_file(encrypted_payload, key_b64)
+                except Exception as e:
+                    print(f"Error decrypting for preview: {e}")
+                    return "Error decrypting file", 500
+                    
         except Exception:
             return "Stored file data not found"
     elif file_doc.get("stored_name"):
@@ -620,6 +794,10 @@ def preview_file_content(file_id):
     if not file_doc:
         return "File not found or not authorized", 404
 
+    # Decrypt filename for extension check
+    if "filename" in file_doc:
+        file_doc["filename"] = vigenere_decrypt(file_doc["filename"], "SECUREBOX")
+
     # Determine content type from filename
     filename = file_doc["filename"].lower()
     if filename.endswith('.pdf'):
@@ -634,17 +812,47 @@ def preview_file_content(file_id):
         content_type = "application/octet-stream"
     
     # Get file content
-    grid_id = file_doc.get("grid_id")
+    grid_id = file_doc.get("grid_id") or file_doc.get("grid_fs_id")
     
     if grid_id:
         try:
             grid_file = fs.get(grid_id)
             file_content = grid_file.read()
-            # Use stored content_type if available, otherwise use detected one
-            stored_type = getattr(grid_file, "content_type", None)
+            
+            # Decrypt if encrypted
+            if file_doc.get("is_encrypted"):
+                encryption_type = file_doc.get("encryption_type", "aes-eax")
+                
+                try:
+                    if encryption_type == "aes-eax":
+                        # Decrypt image with AES-EAX
+                        encrypted_package = json.loads(file_content.decode('utf-8'))
+                        ciphertext = bytes.fromhex(encrypted_package["ciphertext"])
+                        metadata = encrypted_package["metadata"]
+                        key = bytes.fromhex(file_doc["encryption_key"])
+                        
+                        # Decrypt to get image bytes
+                        file_content = decrypt_image(ciphertext, key, metadata)
+                        content_type = "image/png"  # Decrypted images are PNG
+                    elif encryption_type == "aes-gcm":
+                        # Decrypt file with AES-GCM
+                        encrypted_payload = json.loads(file_content.decode('utf-8'))
+                        key_b64 = file_doc["encryption_key"]
+                        
+                        # Decrypt file
+                        file_content = decrypt_file(encrypted_payload, key_b64)
+                        # Keep original content type for files (e.g. PDF)
+                except Exception as e:
+                    print(f"Error decrypting for preview content: {e}")
+                    return "Error decrypting file", 500
+            else:
+                # Use stored content_type if available, otherwise use detected one
+                stored_type = getattr(grid_file, "content_type", None)
+                content_type = stored_type or content_type
+                
             return send_file(
                 io.BytesIO(file_content),
-                mimetype=stored_type or content_type,
+                mimetype=content_type,
                 as_attachment=False
             )
         except Exception:
@@ -839,11 +1047,12 @@ def reset_password():
              return render_template("reset_password.html", error="Passwords do not match")
              
         email = session["reset_email"]
+        user = users_col.find_one({"email": email}) # Fetch user to get _id
         
         # Update password
         users_col.update_one(
-            {"email": email},
-            {"$set": {"password_hash": generate_password_hash(password)}}
+            {"_id": user["_id"]},
+            {"$set": {"password_hash": hash_password(password)}}
         )
         
         # Cleanup
@@ -898,7 +1107,7 @@ def change_password():
     new_password = request.form["new_password"]
     confirm_password = request.form["confirm_password"]
     
-    if not check_password_hash(user["password_hash"], current_password):
+    if not verify_password(current_password, user["password_hash"]):
         logs = list(activity_logs_col.find({"user_id": user_id}).sort("timestamp", -1).limit(50))
         return render_template("profile.html", user=user, logs=logs, error="Incorrect current password")
         
@@ -908,7 +1117,7 @@ def change_password():
         
     users_col.update_one(
         {"user_id": user_id},
-        {"$set": {"password_hash": generate_password_hash(new_password)}}
+        {"$set": {"password_hash": hash_password(new_password)}}
     )
     log_activity(user_id, "password_changed", action_category="profile")
     return redirect(url_for("profile"))

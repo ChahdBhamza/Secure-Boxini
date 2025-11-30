@@ -5,11 +5,8 @@ This module provides functions to encrypt/decrypt sensitive data before
 storing in MongoDB, using the AES-GCM encryption from encryption.py.
 """
 
-from encryption import encrypt, decrypt, generate_key
+from aessfile import encrypt, decrypt, generate_key
 import os
-import json
-from typing import Dict, Any, Optional, List
-
 # Get master key from environment
 MASTER_KEY = os.getenv("MASTER_ENCRYPTION_KEY")
 
