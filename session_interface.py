@@ -51,8 +51,8 @@ class MongoSessionInterface(SessionInterface):
         if session.permanent:
             expiry = datetime.utcnow() + app.permanent_session_lifetime
         else:
-            # Default to 1 day if not specified
-            expiry = datetime.utcnow() + timedelta(days=1)
+            # Default to 1 minute for testing
+            expiry = datetime.utcnow() + timedelta(minutes=1)
 
         # Prepare data
         # Schema requires: session_id, user_id, created_at, expires_at

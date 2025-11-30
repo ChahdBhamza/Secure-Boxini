@@ -39,9 +39,14 @@
         <div class="flex flex-col md:flex-row gap-8">
           <div class="flex flex-col items-center gap-4">
             <div class="relative group">
-              {% set profile_pic = user.profile_pic if user.profile_pic else 'default.png' %}
-              <img src="{{ url_for('uploaded_file', filename=profile_pic) }}" alt="Profile Picture"
+              {% if user.profile_picture and user.profile_picture != 'default.png' and 'ui-avatars.com' not in
+              user.profile_picture and not user.profile_picture.startswith('http') %}
+              <img src="{{ url_for('uploaded_file', filename=user.profile_picture) }}" alt="Profile Picture"
                 class="w-32 h-32 rounded-2xl object-cover border border-slate-800 bg-slate-900" />
+              {% else %}
+              <img src="{{ url_for('uploaded_file', filename='defaultprofilepic.png') }}" alt="Profile Picture"
+                class="w-32 h-32 rounded-2xl object-cover border border-slate-800 bg-slate-900" />
+              {% endif %}
               <form action="{{ url_for('profile') }}" method="POST" enctype="multipart/form-data" id="profile-pic-form">
                 <label
                   class="absolute inset-0 rounded-2xl bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
@@ -155,16 +160,40 @@
               <tbody class="divide-y divide-slate-800">
                 {% for log in logs %}
                 <tr class="hover:bg-slate-800/50 transition-colors group">
-                  <td class="px-6 py-4 text-slate-300 font-medium">{{ log.action }}</td>
-                  <td class="px-6 py-4 text-slate-400 text-sm">{{ log.details or '-' }}</td>
+                  <td class="px-6 py-4 text-slate-300 font-medium">
+                    <span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium
+                      {% if 'login' in log.action %}bg-green-500/10 text-green-400 border border-green-500/20
+                      {% elif 'delete' in log.action %}bg-red-500/10 text-red-400 border border-red-500/20
+                      {% elif 'upload' in log.action %}bg-blue-500/10 text-blue-400 border border-blue-500/20
+                      {% else %}bg-slate-700/30 text-slate-400 border border-slate-700/50{% endif %}">
+                      {{ log.action.replace('_', ' ').title() }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 text-slate-400 text-sm">
+                    {% if log.details and log.details.filename %}
+                    <div class="flex items-center gap-2" title="{{ log.details.filename }}">
+                      <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span class="text-slate-300">{{ log.details.filename | truncate_filename(40) }}</span>
+                    </div>
+                    {% elif log.details is mapping %}
+                    {% for key, value in log.details.items() %}
+                    <span class="text-xs text-slate-500">{{ key }}: {{ value }}</span><br>
+                    {% endfor %}
+                    {% else %}
+                    {{ log.details or '-' }}
+                    {% endif %}
+                  </td>
                   <td class="px-6 py-4 text-slate-500 text-sm font-mono">
                     {{ log.timestamp.strftime('%Y-%m-%d %H:%M') }}
                   </td>
                   <td class="px-6 py-4 text-right">
                     <a href="{{ url_for('delete_log', log_id=log._id) }}"
-                      class="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                      class="text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-2 hover:bg-slate-800 rounded-lg inline-block"
                       title="Delete Log">
-                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
                         </path>

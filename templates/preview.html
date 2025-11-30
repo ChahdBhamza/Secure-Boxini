@@ -24,7 +24,8 @@
           <h1 class="text-xl font-semibold">SecureBox</h1>
         </div>
         <div class="flex items-center gap-4 text-sm font-medium">
-          <a href="{{ url_for('dashboard') }}" class="text-slate-400 hover:text-slate-50 transition-colors">Dashboard</a>        
+          <a href="{{ url_for('dashboard') }}"
+            class="text-slate-400 hover:text-slate-50 transition-colors">Dashboard</a>
           <a href="{{ url_for('profile') }}" class="text-slate-400 hover:text-slate-50 transition-colors">Profile</a>
           <a href="{{ url_for('logout') }}"
             class="text-slate-400 hover:text-red-400 px-4 py-2 rounded-lg hover:bg-slate-800 transition-colors">
@@ -40,7 +41,8 @@
         <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
             <p class="uppercase text-xs text-slate-500 tracking-[0.3em] mb-2">Preview</p>
-            <h2 class="text-3xl font-semibold text-white">{{ file.filename }}</h2>
+            <h2 class="text-3xl font-semibold text-white" title="{{ file.filename }}">{{ file.filename |
+              truncate_filename(50) }}</h2>
             <div class="flex items-center gap-4 mt-2 text-sm text-slate-400">
               <span>{{ file.display_size }}</span>
               <span>•</span>
@@ -59,9 +61,9 @@
             </a>
             {% endif %}
             <a href="{{ url_for('recent') }}"
-              class="inline-flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors">
+              class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl text-sm font-medium text-slate-300 hover:text-white transition-all hover:border-slate-600">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12h18M3 12l7-7m-7 7l7 7">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18">
                 </path>
               </svg>
               Back to Recents
@@ -82,9 +84,7 @@
           </div>
           {% elif preview_type == 'pdf' %}
           <div class="w-full h-[70vh] border border-slate-800 rounded-xl overflow-hidden">
-            <iframe src="{{ url_for('preview_file_content', file_id=file._id) }}" 
-                    class="w-full h-full" 
-                    frameborder="0">
+            <iframe src="{{ url_for('preview_file_content', file_id=file._id) }}" class="w-full h-full" frameborder="0">
             </iframe>
           </div>
           {% else %}
@@ -109,4 +109,3 @@
 </body>
 
 </html>
-

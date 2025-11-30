@@ -73,7 +73,29 @@ fs = GridFS(db)
 # Configure Session Interface
 app.session_interface = MongoSessionInterface(db)
 
-
+# Custom Jinja2 filter for truncating filenames while preserving extension
+@app.template_filter('truncate_filename')
+def truncate_filename(filename, max_length=40):
+    """Truncate filename but always show the extension"""
+    if len(filename) <= max_length:
+        return filename
+    
+    # Split filename and extension
+    if '.' in filename:
+        name, ext = filename.rsplit('.', 1)
+        ext = '.' + ext
+    else:
+        name = filename
+        ext = ''
+    
+    # Calculate how much space we have for the name part
+    available_length = max_length - len(ext) - 3  # 3 for "..."
+    
+    if available_length > 0:
+        return name[:available_length] + '...' + ext
+    else:
+        # If extension is too long, just truncate everything
+        return filename[:max_length-3] + '...'
 
 def log_activity(user_id, action, details=None, action_category="general"):
     """Helper to log user activity with user_id"""
@@ -87,10 +109,10 @@ def log_activity(user_id, action, details=None, action_category="general"):
         "user_agent": request.headers.get('User-Agent') if request else None
     })
 
-# ------------------- Home → Register -------------------
+# ------------------- Home -------------------
 @app.route('/')
 def index():
-    return redirect(url_for("register"))
+    return render_template("home.html")
 
 # ------------------- Register -------------------
 @app.route("/register", methods=["GET", "POST"])
@@ -137,11 +159,19 @@ def register():
         # Send Verification Email
         try:
             verify_url = url_for('verify_email', token=token, _external=True)
-            msg = Message('SecureBox - Verify your Email', 
+            msg = Message('SecureBoxini - Verify your Email', 
                           sender=app.config['MAIL_USERNAME'], 
                           recipients=[email])
-            msg.body = f"Welcome to SecureBox! Please click the link to verify your account: {verify_url}"
+            msg.body = ("Hello!\n\n"
+                        "Welcome to SecureBoxini — we're excited to have you on board.\n\n"
+                        "To complete your registration and secure your account, please verify your email address by clicking the link below:\n\n"
+                        f"{verify_url}\n\n"
+                        "If you did not create an account, please ignore this email.\n\n"
+                        "Thank you,\n"
+                        "The SecureBoxini Team")
+
             mail.send(msg)
+
         except Exception as e:
             print(f"Error sending verification email: {e}")
             # We still allow registration, but they might need to resend verification later
@@ -187,7 +217,8 @@ def login():
 
         return render_template("login.html", error="Invalid username or password")
 
-    return render_template("login.html")
+    error = request.args.get("error")
+    return render_template("login.html", error=error)
 
 @app.route("/verify-2fa-login", methods=["GET", "POST"])
 def verify_2fa_login():
@@ -407,7 +438,7 @@ def google_callback():
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
     if "user_id" not in session:
-        return redirect(url_for("login"))
+        return redirect(url_for("login", error="Session expired. Please log in again."))
 
     if request.method == "POST":
         file = request.files["file"]
@@ -577,6 +608,12 @@ def download(file_id):
         
     if not file_doc:
         return "File not found or not authorized"
+
+    # Decrypt filename for download
+    download_filename = vigenere_decrypt(file_doc["filename"], "SECUREBOX")
+    
+    # Log download activity
+    log_activity(session["user_id"], "file_downloaded", {"filename": download_filename}, action_category="file")
 
     # Increment download count
     files_col.update_one(
@@ -910,7 +947,7 @@ def recent():
     if "user_id" not in session:
         return redirect(url_for("login"))
         
-    # Get last 20 actions of type 'file_previewed' or 'file_downloaded'
+    # Get last 50 actions of type 'file_previewed' or 'file_downloaded'
     recent_logs = activity_logs_col.find({
         "user_id": session["user_id"],
         "action": {"$in": ["file_previewed", "file_downloaded"]}
@@ -931,11 +968,20 @@ def recent():
             
         if filename and filename not in seen_files:
             seen_files.add(filename)
+            
+            # Encrypt the filename to search in database (filenames are stored encrypted)
+            encrypted_filename = vigenere_encrypt(filename, "SECUREBOX")
+            
             # Find the actual file doc to get ID and size
-            file_doc = files_col.find_one({"user_id": session["user_id"], "filename": filename})
+            file_doc = files_col.find_one({
+                "user_id": session["user_id"], 
+                "filename": encrypted_filename,
+                "status": "active"
+            })
+            
             if file_doc:
-                # Determine preview type
-                filename_lower = file_doc["filename"].lower()
+                # Determine preview type based on decrypted filename
+                filename_lower = filename.lower()
                 preview_type = None
                 if filename_lower.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')):
                     preview_type = 'image'
@@ -955,7 +1001,7 @@ def recent():
                     display_size = f"{size_bytes / (1024 * 1024):.1f} MB"
                     
                 recent_files.append({
-                    "filename": filename,
+                    "filename": filename,  # Use decrypted filename for display
                     "_id": file_doc["_id"],
                     "display_size": display_size,
                     "viewed_at": log["timestamp"].strftime("%Y-%m-%d %H:%M"),

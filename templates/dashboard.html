@@ -89,7 +89,8 @@
                 </svg>
               </div>
               <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-slate-50 truncate">{{ file.filename }}</p>
+                <p class="text-sm font-medium text-slate-50" title="{{ file.filename }}">{{ file.filename |
+                  truncate_filename(50) }}</p>
                 <p class="text-xs text-slate-500">
                   {{ file.display_size }} • {{ file.display_time }}
                   {% if file.download_count %}
