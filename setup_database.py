@@ -458,6 +458,53 @@ except OperationFailure:
 
 
 # ============================================================
+#   8. FOLDERS COLLECTION (NEW)
+# ============================================================
+print("\n📁 Creating 'folders' collection...")
+
+try:
+    db.create_collection("folders", validator={
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": ["folder_id", "user_id", "name", "created_at"],
+            "properties": {
+                "folder_id": {
+                    "bsonType": "string"
+                },
+                "user_id": {
+                    "bsonType": "string"
+                },
+                "name": {
+                    "bsonType": "string"
+                },
+                "parent_id": {
+                    "bsonType": ["string", "null"]
+                },
+                "created_at": {
+                    "bsonType": "date"
+                }
+            }
+        }
+    })
+    print("   ✅ Collection created with validation")
+except CollectionInvalid:
+    print("   ⚠️  Collection already exists, skipping creation")
+
+# Create indexes
+try:
+    db.folders.create_index([("folder_id", ASCENDING)], unique=True, name="folder_id_unique")
+    print("   ✅ Index: folder_id (unique)")
+except OperationFailure:
+    print("   ⚠️  Index already exists")
+
+try:
+    db.folders.create_index([("user_id", ASCENDING), ("parent_id", ASCENDING)], name="user_parent")
+    print("   ✅ Index: user_id + parent_id")
+except OperationFailure:
+    print("   ⚠️  Index already exists")
+
+
+# ============================================================
 #   8. LEGACY COLLECTIONS (Keep for backward compatibility)
 # ============================================================
 print("\n📦 Checking legacy collections...")

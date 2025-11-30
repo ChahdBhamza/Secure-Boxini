@@ -66,6 +66,7 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client.SecureBoxinii  # Using new database with user_id structure
 users_col = db.users
 files_col = db.files
+folders_col = db.folders
 activity_logs_col = db.activity_logs
 password_reset_tokens_col = db.password_reset_tokens
 reset_codes_col = db.reset_codes
@@ -447,133 +448,181 @@ def dashboard():
     if "user_id" not in session:
         return redirect(url_for("login", error="Session expired. Please log in again."))
 
+    current_folder_id = request.args.get("folder_id")
+    
+    # Verify folder ownership if folder_id is provided
+    current_folder = None
+    breadcrumbs = []
+    
+    if current_folder_id:
+        current_folder = folders_col.find_one({"folder_id": current_folder_id, "user_id": session["user_id"]})
+        if not current_folder:
+            return redirect(url_for("dashboard")) # Invalid folder or not owned by user
+            
+        # Build breadcrumbs
+        temp_folder = current_folder
+        while temp_folder:
+            breadcrumbs.insert(0, {"name": temp_folder["name"], "id": temp_folder["folder_id"]})
+            if temp_folder.get("parent_id"):
+                temp_folder = folders_col.find_one({"folder_id": temp_folder["parent_id"]})
+            else:
+                temp_folder = None
+
     if request.method == "POST":
-        file = request.files["file"]
-        if not file or file.filename == "":
-            return redirect(url_for("dashboard"))
+        # Check if it's a folder creation request
+        if "create_folder" in request.form:
+            folder_name = request.form.get("folder_name")
+            if folder_name:
+                folder_id = str(uuid.uuid4())
+                folders_col.insert_one({
+                    "folder_id": folder_id,
+                    "user_id": session["user_id"],
+                    "name": folder_name,
+                    "parent_id": current_folder_id, # Can be None
+                    "created_at": datetime.utcnow()
+                })
+                log_activity(session["user_id"], "folder_created", {"name": folder_name}, action_category="folder")
+                return redirect(url_for("dashboard", folder_id=current_folder_id))
 
-        filename = secure_filename(file.filename)
-        file_bytes = file.read()
-        file_size = len(file_bytes)
-        mime_type = file.content_type or "application/octet-stream"
-        
-        # Check if file is an image
-        is_image = is_image_file(mime_type, filename)
-        is_encrypted = False
-        encryption_key = None
-        encryption_metadata = None
-        encryption_type = None
-        
-        # Encrypt files before storing
-        if is_image:
-            # Encrypt images with AES-EAX
-            try:
-                ciphertext, key, metadata = encrypt_image(file_bytes)
-                
-                # Store encrypted data as JSON in GridFS
-                encrypted_package = {
-                    "ciphertext": ciphertext.hex(),  # Convert bytes to hex for JSON
-                    "metadata": metadata
-                }
-                encrypted_json = json.dumps(encrypted_package)
-                
-                grid_id = fs.put(
-                    encrypted_json.encode('utf-8'),
-                    filename=f"{filename}.encrypted",
-                    content_type="application/json"
-                )
-                
-                # Store encryption key and metadata
-                encryption_key = key.hex()  # Store as hex string
-                encryption_metadata = metadata
-                encryption_type = "aes-eax"
-                is_encrypted = True
-                
-                # Update file size to reflect encrypted size
-                file_size = len(encrypted_json)
-                
-            except Exception as e:
-                print(f"Error encrypting image: {e}")
-                # Fall back to unencrypted storage
-                grid_id = fs.put(
-                    file_bytes,
-                    filename=filename,
-                    content_type=mime_type
-                )
-        else:
-            # Encrypt non-image files with AES-GCM
-            try:
-                encrypted_payload, key_b64 = encrypt_file(file_bytes)
-                
-                # Store encrypted payload as JSON in GridFS
-                encrypted_json = json.dumps(encrypted_payload.as_dict())
-                
-                grid_id = fs.put(
-                    encrypted_json.encode('utf-8'),
-                    filename=f"{filename}.encrypted",
-                    content_type="application/json"
-                )
-                
-                # Store encryption key and metadata
-                encryption_key = key_b64  # Store as base64 string
-                encryption_metadata = encrypted_payload.as_dict()
-                encryption_type = "aes-gcm"
-                is_encrypted = True
-                
-                # Update file size to reflect encrypted size
-                file_size = len(encrypted_json)
-                
-            except Exception as e:
-                print(f"Error encrypting file: {e}")
-                # Fall back to unencrypted storage
-                grid_id = fs.put(
-                    file_bytes,
-                    filename=filename,
-                    content_type=mime_type
-                )
+        # File upload request
+        file = request.files.get("file")
+        if file and file.filename != "":
+            filename = secure_filename(file.filename)
+            file_bytes = file.read()
+            file_size = len(file_bytes)
+            mime_type = file.content_type or "application/octet-stream"
+            
+            # Check if file is an image
+            is_image = is_image_file(mime_type, filename)
+            is_encrypted = False
+            encryption_key = None
+            encryption_metadata = None
+            encryption_type = None
+            
+            # Encrypt files before storing
+            if is_image:
+                # Encrypt images with AES-EAX
+                try:
+                    ciphertext, key, metadata = encrypt_image(file_bytes)
+                    
+                    # Store encrypted data as JSON in GridFS
+                    encrypted_package = {
+                        "ciphertext": ciphertext.hex(),  # Convert bytes to hex for JSON
+                        "metadata": metadata
+                    }
+                    encrypted_json = json.dumps(encrypted_package)
+                    
+                    grid_id = fs.put(
+                        encrypted_json.encode('utf-8'),
+                        filename=f"{filename}.encrypted",
+                        content_type="application/json"
+                    )
+                    
+                    # Store encryption key and metadata
+                    encryption_key = key.hex()  # Store as hex string
+                    encryption_metadata = metadata
+                    encryption_type = "aes-eax"
+                    is_encrypted = True
+                    
+                    # Update file size to reflect encrypted size
+                    file_size = len(encrypted_json)
+                    
+                except Exception as e:
+                    print(f"Error encrypting image: {e}")
+                    # Fall back to unencrypted storage
+                    grid_id = fs.put(
+                        file_bytes,
+                        filename=filename,
+                        content_type=mime_type
+                    )
+            else:
+                # Encrypt non-image files with AES-GCM
+                try:
+                    encrypted_payload, key_b64 = encrypt_file(file_bytes)
+                    
+                    # Store encrypted payload as JSON in GridFS
+                    encrypted_json = json.dumps(encrypted_payload.as_dict())
+                    
+                    grid_id = fs.put(
+                        encrypted_json.encode('utf-8'),
+                        filename=f"{filename}.encrypted",
+                        content_type="application/json"
+                    )
+                    
+                    # Store encryption key and metadata
+                    encryption_key = key_b64  # Store as base64 string
+                    encryption_metadata = encrypted_payload.as_dict()
+                    encryption_type = "aes-gcm"
+                    is_encrypted = True
+                    
+                    # Update file size to reflect encrypted size
+                    file_size = len(encrypted_json)
+                    
+                except Exception as e:
+                    print(f"Error encrypting file: {e}")
+                    # Fall back to unencrypted storage
+                    grid_id = fs.put(
+                        file_bytes,
+                        filename=filename,
+                        content_type=mime_type
+                    )
 
-        # Add encryption data if encrypted
-        if is_encrypted:
-            # Encrypt the file key with master key (Key Wrapping)
-            # We use the file_doc["file_id"] as AAD, so we need to generate it first
-            # But file_doc is created below. Let's use the uuid we generated.
-            # Wait, file_doc is created below. Let's move file_id generation up.
-            pass
+            # Create file document with encryption info
+            file_id = str(uuid.uuid4())
+            
+            # Encrypt filename with Vigenere
+            encrypted_filename = vigenere_encrypt(filename, "SECUREBOX")
 
-        # Create file document with encryption info
-        file_id = str(uuid.uuid4())
-        
-        file_doc_key = None
+            file_doc = {
+                "file_id": file_id,
+                "user_id": session["user_id"],
+                "filename": encrypted_filename,  # Store encrypted filename
+                "original_filename": filename,   # Keep original for reference
+                "grid_fs_id": grid_id,
+                "size": file_size,
+                "mime_type": mime_type,
+                "upload_time": datetime.utcnow(),
+                "last_modified": datetime.utcnow(),
+                "download_count": 0,
+                "status": "active",
+                "is_encrypted": is_encrypted,
+                "folder_id": current_folder_id, # Store folder_id
+                "tags": []
+            }
+            
+            if is_encrypted:
+                file_doc["encryption_key"] = encryption_key
+                file_doc["encryption_metadata"] = encryption_metadata
+                file_doc["encryption_type"] = encryption_type
+            
+            files_col.insert_one(file_doc)
+            
+            log_activity(session["user_id"], "file_uploaded", {"filename": filename}, action_category="file")
+            return redirect(url_for("dashboard", folder_id=current_folder_id))
 
-        # Encrypt filename with Vigenere
-        encrypted_filename = vigenere_encrypt(filename, "SECUREBOX")
+    # Fetch folders in current directory
+    folders = list(folders_col.find({
+        "user_id": session["user_id"], 
+        "parent_id": current_folder_id
+    }).sort("name", 1))
 
-        file_doc = {
-            "file_id": file_id,
-            "user_id": session["user_id"],
-            "filename": encrypted_filename,  # Store encrypted filename
-            "original_filename": filename,   # Keep original for reference (optional, maybe encrypt this too?)
-            "grid_fs_id": grid_id,
-            "size": file_size,
-            "mime_type": mime_type,
-            "upload_time": datetime.utcnow(),
-            "last_modified": datetime.utcnow(),
-            "download_count": 0,
-            "status": "active",
-            "is_encrypted": is_encrypted,
-            "tags": []
-        }
-        
-        if is_encrypted:
-            file_doc["encryption_key"] = encryption_key
-            file_doc["encryption_metadata"] = encryption_metadata
-            file_doc["encryption_type"] = encryption_type
-        
-        files_col.insert_one(file_doc)
-        
-        log_activity(session["user_id"], "file_uploaded", {"filename": filename}, action_category="file")
+    # Fetch files in current directory
+    # Note: We need to handle legacy files that don't have folder_id (treat as root)
+    file_query = {
+        "user_id": session["user_id"], 
+        "status": "active"
+    }
+    
+    if current_folder_id:
+        file_query["folder_id"] = current_folder_id
+    else:
+        # For root, get files where folder_id is None OR folder_id doesn't exist
+        file_query["$or"] = [
+            {"folder_id": None},
+            {"folder_id": {"$exists": False}}
+        ]
 
-    user_files = list(files_col.find({"user_id": session["user_id"], "status": "active"}).sort("upload_time", -1))
+    user_files = list(files_col.find(file_query).sort("upload_time", -1))
     
     # Format files for display
     for f in user_files:
@@ -595,7 +644,42 @@ def dashboard():
         else:
             f["display_time"] = "Unknown"
 
-    return render_template("dashboard.html", files=user_files)
+    return render_template("dashboard.html", files=user_files, folders=folders, current_folder=current_folder, breadcrumbs=breadcrumbs)
+
+@app.route("/delete-folder/<folder_id>")
+def delete_folder(folder_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    # Verify ownership
+    folder = folders_col.find_one({"folder_id": folder_id, "user_id": session["user_id"]})
+    if not folder:
+        return redirect(url_for("dashboard"))
+        
+    # Delete folder
+    folders_col.delete_one({"_id": folder["_id"]})
+    
+    # Optional: Delete subfolders and files recursively?
+    # For now, let's just delete the folder itself. Files inside will be orphaned or hidden?
+    # Better approach: Move files to root or delete them. 
+    # Let's implement recursive delete for simplicity and cleanliness.
+    
+    def delete_recursive(f_id):
+        # Delete files in this folder
+        files_col.delete_many({"folder_id": f_id})
+        
+        # Find subfolders
+        subfolders = folders_col.find({"parent_id": f_id})
+        for sub in subfolders:
+            delete_recursive(sub["folder_id"])
+            folders_col.delete_one({"_id": sub["_id"]})
+            
+    delete_recursive(folder_id)
+    
+    log_activity(session["user_id"], "folder_deleted", {"name": folder["name"]}, action_category="folder")
+    
+    # Redirect to parent folder if exists, else root
+    return redirect(url_for("dashboard", folder_id=folder.get("parent_id")))
 
 # ------------------- Serve Uploaded File -------------------
 @app.route('/uploads/<filename>')
@@ -1007,13 +1091,21 @@ def recent():
                 else:
                     display_size = f"{size_bytes / (1024 * 1024):.1f} MB"
                     
+                # Get folder name if exists
+                folder_name = "Home"
+                if file_doc.get("folder_id"):
+                    folder = folders_col.find_one({"folder_id": file_doc["folder_id"]})
+                    if folder:
+                        folder_name = folder["name"]
+
                 recent_files.append({
                     "filename": filename,  # Use decrypted filename for display
                     "_id": file_doc["_id"],
                     "display_size": display_size,
                     "viewed_at": log["timestamp"].strftime("%Y-%m-%d %H:%M"),
                     "action": log["action"],
-                    "preview_type": preview_type
+                    "preview_type": preview_type,
+                    "folder_name": folder_name
                 })
                     
     return render_template("recent.html", files=recent_files)

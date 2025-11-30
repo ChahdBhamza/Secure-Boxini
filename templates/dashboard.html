@@ -42,15 +42,86 @@
 
     <!-- Main Content -->
     <div class="max-w-6xl mx-auto px-6 py-8">
+
+      <!-- Breadcrumbs & Actions -->
+      <div class="flex items-center justify-between mb-6">
+        <nav class="flex" aria-label="Breadcrumb">
+          <ol class="inline-flex items-center space-x-1 md:space-x-3">
+            <li class="inline-flex items-center">
+              <a href="{{ url_for('dashboard') }}"
+                class="inline-flex items-center text-sm font-medium text-slate-400 hover:text-white">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z">
+                  </path>
+                </svg>
+                Home
+              </a>
+            </li>
+            {% for crumb in breadcrumbs %}
+            <li>
+              <div class="flex items-center">
+                <svg class="w-6 h-6 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd"
+                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                    clip-rule="evenodd"></path>
+                </svg>
+                <a href="{{ url_for('dashboard', folder_id=crumb.id) }}"
+                  class="ml-1 text-sm font-medium text-slate-400 hover:text-white md:ml-2">{{ crumb.name
+                  }}</a>
+              </div>
+            </li>
+            {% endfor %}
+          </ol>
+        </nav>
+
+        <div class="flex gap-2">
+          <!-- Create Folder Button -->
+          <button onclick="document.getElementById('createFolderModal').classList.remove('hidden')"
+            class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-700">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z">
+              </path>
+            </svg>
+            New Folder
+          </button>
+        </div>
+      </div>
+
+      <!-- Create Folder Modal -->
+      <div id="createFolderModal"
+        class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl transform transition-all">
+          <h3 class="text-lg font-semibold text-white mb-4">Create New Folder</h3>
+          <form action="{{ url_for('dashboard', folder_id=current_folder.folder_id if current_folder else None) }}"
+            method="POST">
+            <input type="hidden" name="create_folder" value="true">
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-400 mb-2">Folder Name</label>
+              <input type="text" name="folder_name" required autofocus
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div class="flex justify-end gap-3">
+              <button type="button" onclick="document.getElementById('createFolderModal').classList.add('hidden')"
+                class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+              <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors">Create</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Upload Section -->
       <div class="mb-8">
-        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">Upload Files</h2>
         <div class="border border-slate-800 bg-slate-900/50 p-8 rounded-lg relative overflow-hidden group">
           <div
             class="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           </div>
 
-          <form action="{{ url_for('dashboard') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
+          <form action="{{ url_for('dashboard', folder_id=current_folder.folder_id if current_folder else None) }}"
+            method="POST" enctype="multipart/form-data" id="uploadForm">
             <label class="relative flex flex-col items-center justify-center cursor-pointer gap-4">
               <div
                 class="w-12 h-12 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors flex items-center justify-center">
@@ -60,7 +131,8 @@
                 </svg>
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-slate-50">Click to upload a file</p>
+                <p class="text-sm font-medium text-slate-50">Click to upload a file to {{
+                  current_folder.name if current_folder else 'Home' }}</p>
                 <p class="text-xs text-slate-500 mt-1">Max size 16MB</p>
               </div>
               <input type="file" name="file" class="hidden" onchange="document.getElementById('uploadForm').submit()">
@@ -69,11 +141,48 @@
         </div>
       </div>
 
+      <!-- Folders Grid -->
+      {% if folders %}
+      <div class="mb-8">
+        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">Folders</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {% for folder in folders %}
+          <div class="group relative">
+            <a href="{{ url_for('dashboard', folder_id=folder.folder_id) }}"
+              class="block bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-900 p-4 rounded-xl transition-all duration-200">
+              <div class="flex items-center gap-3 mb-2">
+                <svg class="w-8 h-8 text-blue-400 group-hover:text-blue-300 transition-colors" fill="currentColor"
+                  viewBox="0 0 20 20">
+                  <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
+                </svg>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium text-slate-200 truncate group-hover:text-white">{{
+                    folder.name }}</p>
+                </div>
+              </div>
+            </a>
+            <!-- Delete Folder Button (Absolute positioned) -->
+            <a href="{{ url_for('delete_folder', folder_id=folder.folder_id) }}"
+              onclick="return confirm('Delete folder {{ folder.name }} and all its contents?')"
+              class="absolute top-2 right-2 p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
+                </path>
+              </svg>
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Files Section -->
       <div>
         <div class="flex items-center justify-between mb-6">
-          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Your Files</h2>
-          <span class="text-xs text-slate-500 bg-slate-900 px-3 py-1 rounded-full">{{ files|length }} files</span>
+          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide">Files</h2>
+          <span class="text-xs text-slate-500 bg-slate-900 px-3 py-1 rounded-full">{{ files|length }}
+            files</span>
         </div>
 
         <div class="space-y-3">
@@ -139,7 +248,7 @@
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
               </path>
             </svg>
-            <p class="text-slate-400 text-sm">No files yet. Upload something to get started!</p>
+            <p class="text-slate-400 text-sm">No files in this folder.</p>
           </div>
           {% endfor %}
         </div>
