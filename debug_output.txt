@@ -1,0 +1,36 @@
+--- USERS ---
+User: Chahd Ben hamza33 (ID: fbce1b50-354d-449c-9ff3-6c1c65ed232f)
+  Global Admin: None
+  Email: chahdbenhamza4@gmail.com
+User: chahd ben hamza (ID: 63ed7e0d-9d61-4cba-9118-fba9c11a18cb)
+  Global Admin: None
+  Email: chahdbenhamza05@gmail.com
+User: pluplop (ID: 2019843a-7dd6-4716-bb2a-07eacdaeed6f)
+  Global Admin: None
+  Email: cbhhamleton15@gmail.com
+User: pluploppp (ID: 041c84c2-0231-40da-ab93-8aa62fb33b1c)
+  Global Admin: None
+  Email: benhamzachahd6@gmail.com
+User: sila bila (ID: 3b6f2395-50f7-4ad4-afad-9bbb0187d284)
+  Global Admin: None
+  Email: silabila305@gmail.com
+
+--- FOLDERS ---
+Folder: family (ID: 579b3376-b6ea-415a-8aa7-a60c7a964a0c)
+  Owner ID: 63ed7e0d-9d61-4cba-9118-fba9c11a18cb
+  Parent ID: None
+Folder: work (ID: c37b4b44-e9cc-49c9-84ad-8f5610dcc424)
+  Owner ID: fbce1b50-354d-449c-9ff3-6c1c65ed232f
+  Parent ID: None
+Folder: family (ID: 504ee8b7-c7fd-457c-8a48-9416f2101132)
+  Owner ID: 63ed7e0d-9d61-4cba-9118-fba9c11a18cb
+  Parent ID: None
+Folder: workss (ID: d2b05691-5d20-41d0-b140-e833e8eec7ae)
+  Owner ID: 3b6f2395-50f7-4ad4-afad-9bbb0187d284
+  Parent ID: None
+
+--- PERMISSIONS ---
+Permission for Folder 504ee8b7-c7fd-457c-8a48-9416f2101132 - User 63ed7e0d-9d61-4cba-9118-fba9c11a18cb: viewer
+Permission for Folder d2b05691-5d20-41d0-b140-e833e8eec7ae - User 3b6f2395-50f7-4ad4-afad-9bbb0187d284: admin
+Permission for Folder 9b1ecb90-75de-44ef-abc3-5e53294203aa - User 63ed7e0d-9d61-4cba-9118-fba9c11a18cb: admin
+Permission for Folder 504ee8b7-c7fd-457c-8a48-9416f2101132 - User 041c84c2-0231-40da-ab93-8aa62fb33b1c: member
