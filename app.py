@@ -120,6 +120,10 @@ def log_activity(user_id, action, details=None, action_category="general"):
 def index():
     return render_template("home.html")
 
+@app.route('/about')
+def about():
+    return render_template("about.html")
+
 # ------------------- Register -------------------
 @app.route("/register", methods=["GET", "POST"])
 def register():

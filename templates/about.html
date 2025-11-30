@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us - SecureBoxini</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-up': 'fadeUp 1s ease forwards',
+                    },
+                    keyframes: {
+                        fadeUp: {
+                            '0%': { opacity: '0', transform: 'translateY(30px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .text-gradient {
+            background: linear-gradient(to right, #06b6d4, #2563eb);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-950 text-slate-50 font-sans antialiased selection:bg-cyan-500 selection:text-white">
+
+    <!-- Navigation -->
+    <nav
+        class="fixed w-full top-0 z-50 px-[5%] py-6 flex justify-between items-center bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
+        <div class="flex items-center gap-3">
+            <a href="{{ url_for('index') }}" class="flex items-center gap-3 group">
+                <div
+                    class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                        </path>
+                    </svg>
+                </div>
+                <span class="text-xl font-bold text-white">SecureBoxini</span>
+            </a>
+        </div>
+        <div class="hidden md:flex items-center space-x-8">
+            <a href="{{ url_for('index') }}"
+                class="text-slate-400 hover:text-white transition-colors font-medium">Home</a>
+            {% if session.get('user_id') %}
+            <a href="{{ url_for('dashboard') }}"
+                class="text-slate-400 hover:text-white transition-colors font-medium">Dashboard</a>
+            <a href="{{ url_for('logout') }}"
+                class="bg-slate-800 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-slate-700 transition-all duration-300 border border-slate-700">Logout</a>
+            {% else %}
+            <a href="{{ url_for('login') }}"
+                class="text-slate-400 hover:text-white transition-colors font-medium">Login</a>
+            <a href="{{ url_for('register') }}"
+                class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:from-cyan-600 hover:to-blue-700 transition-all duration-300 shadow-lg shadow-cyan-500/20">Get
+                Started</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="pt-32 pb-20 px-[5%]">
+        <div class="max-w-4xl mx-auto">
+            <!-- Header -->
+            <div class="text-center mb-16 opacity-0 animate-[fadeUp_1s_ease_forwards]">
+                <h1 class="text-4xl md:text-6xl font-bold mb-6">About <span class="text-gradient">SecureBoxini</span>
+                </h1>
+                <p class="text-xl text-slate-400 max-w-2xl mx-auto">We are dedicated to providing the most secure and
+                    user-friendly file storage solution for the modern web.</p>
+            </div>
+
+            <!-- Content Grid -->
+            <div class="grid md:grid-cols-2 gap-12 mb-20">
+                <div
+                    class="bg-slate-900/50 p-8 rounded-2xl border border-slate-800 opacity-0 animate-[fadeUp_1s_ease_forwards_0.2s]">
+                    <div class="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold mb-4 text-white">Our Mission</h2>
+                    <p class="text-slate-400 leading-relaxed">
+                        To empower individuals and businesses with absolute control over their digital assets. We
+                        believe privacy is a fundamental right, not a luxury feature.
+                    </p>
+                </div>
+
+                <div
+                    class="bg-slate-900/50 p-8 rounded-2xl border border-slate-800 opacity-0 animate-[fadeUp_1s_ease_forwards_0.4s]">
+                    <div class="w-12 h-12 rounded-lg bg-cyan-500/10 flex items-center justify-center mb-6">
+                        <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                            </path>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold mb-4 text-white">Security First</h2>
+                    <p class="text-slate-400 leading-relaxed">
+                        Built with state-of-the-art encryption standards. Your files are encrypted on your device before
+                        they ever reach our servers, ensuring zero-knowledge privacy.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Team / Contact Section -->
+            <div
+                class="bg-gradient-to-br from-slate-900 to-slate-900/50 rounded-3xl p-8 md:p-12 border border-slate-800 text-center opacity-0 animate-[fadeUp_1s_ease_forwards_0.6s]">
+                <h2 class="text-3xl font-bold mb-6">Get in Touch</h2>
+                <p class="text-slate-400 mb-8 max-w-xl mx-auto">
+                    Have questions about our security protocols or need help with your account? Our team is here to
+                    help.
+                </p>
+                <a href="mailto:support@secureboxini.com"
+                    class="inline-flex items-center gap-2 bg-white text-slate-950 px-8 py-3 rounded-xl font-bold hover:bg-slate-200 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    Contact Support
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-8 text-center text-slate-500 text-sm border-t border-slate-800 bg-slate-950">
+        <p>&copy; 2023 SecureBoxini. All rights reserved.</p>
+    </footer>
+
+</body>
+
+</html>

@@ -67,8 +67,7 @@
                     clip-rule="evenodd"></path>
                 </svg>
                 <a href="{{ url_for('dashboard', folder_id=crumb.id) }}"
-                  class="ml-1 text-sm font-medium text-slate-400 hover:text-white md:ml-2">{{ crumb.name
-                  }}</a>
+                  class="ml-1 text-sm font-medium text-slate-400 hover:text-white md:ml-2">{{ crumb.name }}</a>
               </div>
             </li>
             {% endfor %}
@@ -129,17 +128,13 @@
       <!-- Upload Section -->
       {% if can_upload %}
       <div class="mb-8">
-        <div class="border border-slate-800 bg-slate-900/50 p-8 rounded-lg relative overflow-hidden group">
-          <div
-            class="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          </div>
-
+        <div class="border-2 border-dashed border-slate-700 bg-slate-900/50 p-12 rounded-lg relative overflow-hidden group hover:border-blue-500/50 transition-colors">
           <form action="{{ url_for('dashboard', folder_id=current_folder.folder_id if current_folder else None) }}"
             method="POST" enctype="multipart/form-data" id="uploadForm">
             <label class="relative flex flex-col items-center justify-center cursor-pointer gap-4">
               <div
-                class="w-12 h-12 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors flex items-center justify-center">
-                <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                class="w-16 h-16 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors flex items-center justify-center">
+                <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
@@ -156,7 +151,7 @@
       </div>
       {% endif %}
 
-      <!-- Folders Grid -->
+      <!-- Folders Section -->
       {% if folders %}
       <div class="mb-8">
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">Folders</h2>
@@ -164,7 +159,7 @@
           {% for folder in folders %}
           <div class="group relative">
             <a href="{{ url_for('dashboard', folder_id=folder.folder_id) }}"
-              class="block bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-900 p-4 rounded-xl transition-all duration-200">
+              class="block bg-slate-900/50 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-900 p-4 rounded-xl transition-all duration-200 {% if current_folder and current_folder.folder_id == folder.folder_id %}border-blue-500 bg-slate-900{% endif %}">
               <div class="flex items-center gap-3 mb-2">
                 <svg class="w-8 h-8 text-blue-400 group-hover:text-blue-300 transition-colors" fill="currentColor"
                   viewBox="0 0 20 20">
@@ -177,6 +172,7 @@
               </div>
             </a>
             <!-- Delete Folder Button -->
+            {% if folder.user_id == session.get('user_id') %}
             <a href="{{ url_for('delete_folder', folder_id=folder.folder_id) }}"
               onclick="return confirm('Delete folder {{ folder.name }} and all its contents?')"
               class="absolute top-2 right-2 p-1 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded">
@@ -186,6 +182,7 @@
                 </path>
               </svg>
             </a>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -201,6 +198,7 @@
         </div>
 
         <div class="space-y-3">
+          {% if files %}
           {% for file in files %}
           <div
             class="border border-slate-800 bg-slate-900/50 hover:bg-slate-900/70 transition-colors p-4 rounded-lg flex items-center justify-between group">
@@ -257,6 +255,7 @@
               {% endif %}
             </div>
           </div>
+          {% endfor %}
           {% else %}
           <!-- Empty state -->
           <div class="border border-slate-800 bg-slate-900/30 p-12 rounded-lg text-center">
@@ -267,7 +266,7 @@
             </svg>
             <p class="text-slate-400 text-sm">No files in this folder.</p>
           </div>
-          {% endfor %}
+          {% endif %}
         </div>
       </div>
     </div>
