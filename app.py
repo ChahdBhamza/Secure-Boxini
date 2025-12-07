@@ -772,6 +772,132 @@ def delete_folder(folder_id):
     # Redirect to parent folder if exists, else root
     return redirect(url_for("dashboard", folder_id=folder.get("parent_id")))
 
+@app.route("/rename_file/<file_id>", methods=["POST"])
+def rename_file(file_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    new_name = request.form.get("new_name")
+    if not new_name:
+        flash("New name is required", "error")
+        return redirect(url_for("dashboard"))
+        
+    # Find file and verify ownership
+    file_doc = files_col.find_one({"file_id": file_id})
+    
+    if not file_doc:
+        flash("File not found", "error")
+        return redirect(url_for("dashboard"))
+        
+    # Check if user can manage this file (for rename, usually owner or admin)
+    # Allow: Owner OR Global Admin OR Folder Admin (if file is in a folder)
+    
+    can_rename = False
+    
+    # 1. Check Ownership
+    if file_doc["user_id"] == session["user_id"]:
+        can_rename = True
+        
+    # 2. Check Global Admin
+    elif rbac.is_global_admin(session["user_id"]):
+        can_rename = True
+        
+    # 3. Check Folder Admin
+    elif file_doc.get("folder_id"):
+        # Check if user has "manage" (admin) permission on the folder
+        if rbac.has_folder_permission(session["user_id"], file_doc["folder_id"], "manage"):
+            can_rename = True
+            
+    if not can_rename:
+         flash("You don't have permission to rename this file", "error")
+         return redirect(url_for("dashboard", folder_id=file_doc.get("folder_id")))
+
+    # Validation: Secure filename but keep extension if present in original
+    # logic: User provides "new_name" (e.g. "report_final")
+    # We should grab extension from original_filename (e.g. ".pdf")
+    # Result: "report_final.pdf"
+    
+    original_ext = ""
+    if "." in file_doc["original_filename"]:
+         original_ext = "." + file_doc["original_filename"].rsplit(".", 1)[1]
+         
+    # Sanitize new name (removes slashes etc)
+    clean_name = secure_filename(new_name)
+    
+    # If user included extension in new_name, strip it to avoid double extension
+    if clean_name.endswith(original_ext):
+        clean_name = clean_name[:-len(original_ext)]
+        
+    final_name = clean_name + original_ext
+    
+    # Encrypt new filename
+    encrypted_name = vigenere_encrypt(final_name, "SECUREBOX")
+    
+    # Update DB
+    files_col.update_one(
+        {"file_id": file_id},
+        {"$set": {
+            "filename": encrypted_name,
+            "original_filename": final_name,
+            "last_modified": datetime.utcnow()
+        }}
+    )
+    
+    log_activity(session["user_id"], "file_renamed", 
+                 {"old_name": file_doc["original_filename"], "new_name": final_name}, 
+                 action_category="file")
+                 
+    return redirect(url_for("dashboard", folder_id=file_doc.get("folder_id")))
+
+@app.route("/rename_folder/<folder_id>", methods=["POST"])
+def rename_folder(folder_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    new_name = request.form.get("new_name")
+    if not new_name:
+        flash("New folder name is required", "error")
+        return redirect(url_for("dashboard", folder_id=folder_id))
+        
+    # Validation: Only Admins (Global or Folder) can rename folders
+    can_rename = False
+    
+    # 1. Global Admin
+    if rbac.is_global_admin(session["user_id"]):
+        can_rename = True
+        
+    # 2. Folder Admin (Manage Permission)
+    elif rbac.has_folder_permission(session["user_id"], folder_id, "manage"):
+        can_rename = True
+        
+    if not can_rename:
+        flash("Only folder admins can rename folders", "error")
+        # Find parent to redirect correctly
+        folder = folders_col.find_one({"folder_id": folder_id})
+        parent_id = folder.get("parent_id") if folder else None
+        return redirect(url_for("dashboard", folder_id=parent_id))
+        
+    # Sanitize
+    clean_name = secure_filename(new_name)
+    if not clean_name: # Handle case where name is all special chars
+         clean_name = new_name 
+         
+    # Update DB
+    folders_col.update_one(
+        {"folder_id": folder_id},
+        {"$set": {
+            "name": clean_name
+        }}
+    )
+    
+    log_activity(session["user_id"], "folder_renamed", 
+                 {"folder_id": folder_id, "new_name": clean_name}, 
+                 action_category="folder")
+                 
+    # Return to parent folder view
+    folder = folders_col.find_one({"folder_id": folder_id})
+    return redirect(url_for("dashboard", folder_id=folder.get("parent_id")))
+
 # ------------------- Folder Member Management Routes -------------------
 
 @app.route("/folder/<folder_id>/members")

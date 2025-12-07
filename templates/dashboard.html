@@ -125,10 +125,56 @@
         </div>
       </div>
 
+      <!-- Rename File Modal -->
+      <div id="renameFileModal"
+        class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl transform transition-all">
+          <h3 class="text-lg font-semibold text-white mb-4">Rename File</h3>
+          <form id="renameFileForm" method="POST">
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-400 mb-2">New Name</label>
+              <input type="text" name="new_name" id="renameInput" required autofocus
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+              <p class="text-xs text-slate-500 mt-1">File extension will be preserved automatically.</p>
+            </div>
+            <div class="flex justify-end gap-3">
+              <button type="button" onclick="closeRenameModal()"
+                class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+              <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors">Rename</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Rename Folder Modal -->
+      <div id="renameFolderModal"
+        class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl transform transition-all">
+          <h3 class="text-lg font-semibold text-white mb-4">Rename Folder</h3>
+          <form id="renameFolderForm" method="POST">
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-400 mb-2">New Folder Name</label>
+              <input type="text" name="new_name" id="renameFolderInput" required
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div class="flex justify-end gap-3">
+              <button type="button" onclick="document.getElementById('renameFolderModal').classList.add('hidden')"
+                class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+              <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors">Rename</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Upload Section -->
       {% if can_upload %}
       <div class="mb-8">
-        <div class="border-2 border-dashed border-slate-700 bg-slate-900/50 p-12 rounded-lg relative overflow-hidden group hover:border-blue-500/50 transition-colors">
+        <div
+          class="border-2 border-dashed border-slate-700 bg-slate-900/50 p-12 rounded-lg relative overflow-hidden group hover:border-blue-500/50 transition-colors">
           <form action="{{ url_for('dashboard', folder_id=current_folder.folder_id if current_folder else None) }}"
             method="POST" enctype="multipart/form-data" id="uploadForm">
             <label class="relative flex flex-col items-center justify-center cursor-pointer gap-4">
@@ -151,6 +197,28 @@
       </div>
       {% endif %}
 
+      <!-- Rename Folder Modal -->
+      <div id="renameFolderModal"
+        class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-md shadow-2xl transform transition-all">
+          <h3 class="text-lg font-semibold text-white mb-4">Rename Folder</h3>
+          <form id="renameFolderForm" method="POST">
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-slate-400 mb-2">New Folder Name</label>
+              <input type="text" name="new_name" id="renameFolderInput" required
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div class="flex justify-end gap-3">
+              <button type="button" onclick="document.getElementById('renameFolderModal').classList.add('hidden')"
+                class="px-4 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+              <button type="submit"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors">Rename</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Folders Section -->
       {% if folders %}
       <div class="mb-8">
@@ -171,6 +239,19 @@
                 </div>
               </div>
             </a>
+            <!-- Rename Folder Button (Admin Only) -->
+            {% if folder.user_role == 'admin' or session.get('is_global_admin') %}
+            <button
+              onclick="openRenameFolderModal('{{ folder.folder_id }}', '{{ folder.name }}'); event.preventDefault();"
+              class="absolute top-2 right-9 p-1 text-slate-500 hover:text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 rounded z-10">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                </path>
+              </svg>
+            </button>
+            {% endif %}
+
             <!-- Delete Folder Button -->
             {% if folder.user_id == session.get('user_id') %}
             <a href="{{ url_for('delete_folder', folder_id=folder.folder_id) }}"
@@ -241,6 +322,18 @@
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
               </a>
+              <!-- Rename Button -->
+              {% if file.user_id == session.get('user_id') or session.get('is_global_admin') or
+              can_manage_current_folder %}
+              <button onclick="openRenameModal('{{ file.file_id }}', '{{ file.original_filename }}')" title="Rename"
+                class="text-slate-400 hover:text-yellow-400 hover:bg-slate-800 p-2 rounded transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                  </path>
+                </svg>
+              </button>
+              {% endif %}
               {% if file.can_delete %}
               <a href="{{ url_for('delete_file', file_id=file._id) }}"
                 onclick="return confirm('Are you sure you want to delete this file?')"
@@ -271,6 +364,38 @@
       </div>
     </div>
   </div>
+
+  <script>
+    function openRenameModal(fileId, currentName) {
+      const modal = document.getElementById('renameFileModal');
+      const form = document.getElementById('renameFileForm');
+      const input = document.getElementById('renameInput');
+
+      // Remove extension for the input field to make it cleaner
+      let nameWithoutExt = currentName;
+      if (currentName.includes('.')) {
+        nameWithoutExt = currentName.substring(0, currentName.lastIndexOf('.'));
+      }
+
+      input.value = nameWithoutExt;
+      form.action = `/rename_file/${fileId}`;
+      modal.classList.remove('hidden');
+    }
+
+    function closeRenameModal() {
+      document.getElementById('renameFileModal').classList.add('hidden');
+    }
+
+    function openRenameFolderModal(folderId, currentName) {
+      const modal = document.getElementById('renameFolderModal');
+      const form = document.getElementById('renameFolderForm');
+      const input = document.getElementById('renameFolderInput');
+
+      input.value = currentName;
+      form.action = `/rename_folder/${folderId}`;
+      modal.classList.remove('hidden');
+    }
+  </script>
 </body>
 
 </html>
