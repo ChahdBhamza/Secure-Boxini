@@ -1,6 +1,6 @@
 """
 File encryption module using AES-GCM encryption.
-Refactored to provide reusable functions for Flask integration.
+
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def encrypt(plaintext: Any, key_b64: str, *, associated_data: Any = None) -> Enc
         plaintext: Data to encrypt (string or bytes)
         key_b64: Base64-encoded AES key
         associated_data: Optional associated data for authentication
-    
+
     Returns:
         EncryptedPayload with nonce and ciphertext
     """
@@ -185,19 +185,3 @@ if __name__ == "__main__":
         f.write(decrypted_bytes)
 
     print("File decrypted →", decrypted_file)
-
-
-    # ============================================================
-    #             TEST TEXT ENCRYPTION FROM USER INPUT
-    # ============================================================
-
-    user_text = input("\nEnter text to encrypt: ")
-
-    # Encrypt user input
-    encrypted_text = encrypt(user_text, key)
-    print("\nEncrypted text:", encrypted_text.as_dict())
-
-    # Decrypt user input
-    decrypted_text_bytes = decrypt(encrypted_text, key)
-    decrypted_text = decrypted_text_bytes.decode("utf-8")
-    print("Decrypted text:", decrypted_text)

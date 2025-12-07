@@ -23,7 +23,10 @@ from session_interface import MongoSessionInterface
 from imageaes import encrypt_image, decrypt_image, is_image_file
 from aessfile import encrypt_file, decrypt_file, generate_key
 from vigenere import vigenere_encrypt, vigenere_decrypt
+from vigenere import vigenere_encrypt, vigenere_decrypt
 import json
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 load_dotenv()
 
@@ -37,6 +40,18 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_NAME'] = 'securebox_session'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=2)
+
+# ------------------- Rate Limiting -------------------
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["2000 per day", "500 per hour"],
+    storage_uri="memory://"
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template("429.html", error=f"Rate limit exceeded: {e.description}"), 429
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -126,6 +141,7 @@ def about():
 
 # ------------------- Register -------------------
 @app.route("/register", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
 def register():
     if request.method == "POST":
         username = request.form["username"]
@@ -197,6 +213,7 @@ def register():
 
 # ------------------- Login -------------------
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if request.method == "POST":
         useremail = request.form["email"].lower().strip()
@@ -370,10 +387,10 @@ def resend_verification():
         # Send Verification Email
         try:
             verify_url = url_for('verify_email', token=token, _external=True)
-            msg = Message('SecureBox - Verify your Email', 
+            msg = Message('SecureBoxini - Verify your Email', 
                           sender=app.config['MAIL_USERNAME'], 
                           recipients=[email])
-            msg.body = f"Welcome to SecureBox! Please click the link to verify your account: {verify_url}"
+            msg.body = f"Welcome to SecureBoxini! Please click the link to verify your account: {verify_url}"
             mail.send(msg)
         except Exception as e:
             print(f"Error sending verification email: {e}")
@@ -457,6 +474,7 @@ def google_callback():
 
 # ------------------- Dashboard (upload + list files) -------------------
 @app.route("/dashboard", methods=["GET", "POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def dashboard():
     if "user_id" not in session:
         return redirect(url_for("login", error="Session expired. Please log in again."))
@@ -1388,7 +1406,7 @@ def forgot_password():
         
         # SIMULATE SENDING EMAIL
         try:
-            msg = Message('SecureBox - Password Reset Code', 
+            msg = Message('SecureBoxini - Password Reset Code', 
                           sender=app.config['MAIL_USERNAME'], 
                           recipients=[email])
             msg.body = f"Your password reset code is: {code}"
