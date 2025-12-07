@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file, flash
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, send_file, flash, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,6 +27,7 @@ from vigenere import vigenere_encrypt, vigenere_decrypt
 import json
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from vault_service import VaultService
 
 load_dotenv()
 
@@ -181,9 +182,14 @@ def register():
             "is_global_admin": is_first_user,  # First user becomes global admin
             "status": "active",
             "verification_token": token,
-            "profile_picture": None,
             "last_login_at": None
         })
+        
+        # Create Key Vault for the user
+        try:
+            VaultService.create_vault(user_id)
+        except Exception as e:
+            print(f"Error creating vault for user {user_id}: {e}")
         
         log_activity(user_id, "user_registered", action_category="auth")
 
@@ -444,6 +450,13 @@ def google_callback():
             "last_login_at": datetime.utcnow()
         }
         users_col.insert_one(new_user)
+        
+        # Create Key Vault for the user
+        try:
+            VaultService.create_vault(user_id)
+        except Exception as e:
+            print(f"Error creating vault for Google user {user_id}: {e}")
+            
         session["user_id"] = user_id
         session["email"] = email
         session.permanent = True
@@ -1699,5 +1712,55 @@ def delete_account():
     session.clear()
     
     return redirect(url_for("register"))
+
+# ------------------- Key Vault Routes -------------------
+@app.route("/key-vault")
+def key_vault_dashboard():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    # Get list of secrets (metadata only)
+    try:
+        secrets = VaultService.list_secrets(session["user_id"])
+    except Exception as e:
+        flash(f"Error accessing vault: {e}", "error")
+        secrets = []
+        
+    return render_template("key_vault.html", secrets=secrets)
+
+@app.route("/vault/add-secret", methods=["POST"])
+def vault_add_secret():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    name = request.form.get("name")
+    value = request.form.get("value")
+    
+    if not name or not value:
+        flash("Name and value are required", "error")
+        return redirect(url_for("key_vault_dashboard"))
+        
+    try:
+        VaultService.set_secret(session["user_id"], name, value)
+        flash("Secret encrypted and stored successfully", "success")
+    except Exception as e:
+        flash(f"Failed to store secret: {e}", "error")
+        
+    return redirect(url_for("key_vault_dashboard"))
+
+@app.route("/vault/secret/<name>")
+def vault_get_secret(name):
+    if "user_id" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    try:
+        value = VaultService.get_secret(session["user_id"], name)
+        if value is None:
+             return jsonify({"error": "Secret not found"}), 404
+             
+        return jsonify({"name": name, "value": value})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
