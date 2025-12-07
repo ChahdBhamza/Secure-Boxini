@@ -12,11 +12,13 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client.SecureBoxinii
 vaults_col = db.vaults
 audit_col = db.key_vault_audit
+activity_logs_col = db.activity_logs
 
 class VaultService:
     @staticmethod
     def log_access(user_id, action, resource, status, details=None):
         """Log access attempts to the Key Vault Audit Log (Simulating Azure Monitor)"""
+        # 1. Specialized Audit Log
         audit_entry = {
             "timestamp": datetime.utcnow(),
             "user_id": user_id,
@@ -26,6 +28,36 @@ class VaultService:
             "details": details or {}
         }
         audit_col.insert_one(audit_entry)
+
+        # 2. Main Activity Log (For User Profile)
+        # Readable Action Mapping
+        action_map = {
+            "SET_SECRET": "Stored Secret",
+            "GET_SECRET": "Revealed Secret",
+            "LIST_SECRETS": "Viewed Vault",
+            "CREATE_VAULT": "Created Key Vault",
+            "DELETE_SECRET": "Deleted Secret"
+        }
+        readable_action = action_map.get(action, f"Key Vault: {action}")
+        
+        # Override message for profile readability
+        details_msg = f"{status.title()} access to {resource}"
+        if action == "SET_SECRET" and status == "ALLOWED":
+            details_msg = f"Encrypted and stored secret '{resource}'"
+        elif action == "GET_SECRET" and status == "ALLOWED":
+            details_msg = f"Decrypted and revealed secret '{resource}'"
+        elif action == "DELETE_SECRET" and status == "ALLOWED":
+            details_msg = f"Permanently deleted secret '{resource}'"
+
+        activity_logs_col.insert_one({
+            "user_id": user_id,
+            "action": readable_action,
+            "action_category": "security",
+            "details": {"message": details_msg},
+            "timestamp": datetime.utcnow(),
+            "ip_address": "127.0.0.1", 
+            "user_agent": "SecureBox KeyVault Service"
+        })
 
     @staticmethod
     def create_vault(user_id):
@@ -184,3 +216,25 @@ class VaultService:
         
         VaultService.log_access(user_id, "LIST_SECRETS", "all", "ALLOWED")
         return secrets
+
+    @staticmethod
+    def delete_secret(user_id, secret_name):
+        """Delete a secret from the user's vault"""
+        try:
+            vault = vaults_col.find_one({"user_id": user_id})
+            if not vault or secret_name not in vault.get("secrets", {}):
+                VaultService.log_access(user_id, "DELETE_SECRET", secret_name, "NOT_FOUND")
+                return False
+                
+            # Remove the secret
+            vaults_col.update_one(
+                {"user_id": user_id},
+                {"$unset": {f"secrets.{secret_name}": ""}}
+            )
+            
+            VaultService.log_access(user_id, "DELETE_SECRET", secret_name, "ALLOWED")
+            return True
+            
+        except Exception as e:
+            VaultService.log_access(user_id, "DELETE_SECRET", secret_name, "ERROR", {"error": str(e)})
+            raise e

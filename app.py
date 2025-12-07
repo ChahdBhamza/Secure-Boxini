@@ -1762,5 +1762,18 @@ def vault_get_secret(name):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/vault/delete-secret/<name>", methods=["POST"])
+def vault_delete_secret(name):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+        
+    try:
+        VaultService.delete_secret(session["user_id"], name)
+        flash(f"Secret '{name}' deleted successfully", "success")
+    except Exception as e:
+        flash(f"Failed to delete secret: {e}", "error")
+        
+    return redirect(url_for("key_vault_dashboard"))
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
