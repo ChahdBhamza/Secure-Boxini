@@ -3,26 +3,16 @@
 # 🛡️ SecureBoxini
 ### Next-Gen Secure File Storage System
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Language-Python-blue)](https://www.python.org/)
 [![Framework](https://img.shields.io/badge/Framework-Flask-green)](https://flask.palletsprojects.com/)
 [![Database](https://img.shields.io/badge/Database-MongoDB-green)](https://www.mongodb.com/)
-[![Security](https://img.shields.io/badge/Security-AES--GCM%20%7C%202FA-red)](SECURITY_DOCUMENTATION.md)
+[![Security](https://img.shields.io/badge/Security-Google%20OAuth%20%7C%20AES--256%20%7C%20AES--128%20%7C%20RBAC-red)](SECURITY_DOCUMENTATION.md)
 
 </div>
 
 ---
 
-## 📖 Table of Contents
-- [What is SecureBoxini?](#-what-is-secureboxini)
-- [Why is it Secure?](#-why-is-it-secure)
-- [Key Features](#-key-features)
-- [Project Structure](#-project-structure)
-- [Installation & Setup](#-installation--setup)
-- [Usage](#-usage)
-- [Documentation](#-documentation)
 
----
 
 ## 💡 What is SecureBoxini?
 
@@ -99,7 +89,7 @@ SecureBoxini/
 
 ### Prerequisites
 *   **Python 3.8+**
-*   **MongoDB** (Running locally on port `27017`)
+*   **MongoDB**
 
 ### 1. Clone & Install
 ```bash
@@ -120,19 +110,14 @@ MAIL_PASSWORD=your_app_password
 # ... (see requirements.txt for all needed env vars)
 ```
 
-### 3. Initialize Database
+### 3. Initialize Databas e
 ```bash
 python setup_database.py
 ```
 
 ## 🏃 Usage
 Start the secure server:
-```bash
-python app.py
-```
-Visit `http://localhost:5000` to begin.
-
----
+``python app.py   ``
 
 
 <div align="center">
